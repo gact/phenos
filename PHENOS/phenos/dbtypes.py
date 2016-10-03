@@ -6539,7 +6539,7 @@ class TimeSpan(DBFloat32):
 
     def is_sufficient(self,fortext="unspecificed operation"):
         if self.is_valid():
-            if self.value>1.0:
+            if self.value>0.2:
                 return True
         LOG.info("timespan {} for {} insufficient for {}"
                  .format(self.value,self.get_record().value,fortext))
@@ -6714,8 +6714,6 @@ class PlateLayout(DBRecord,GraphicGenerator):
             return True
         if self.has_been_read():
             return True
-        if self not in self._get_table():
-            self.store(check=False)
 
         filepath=self["filepath"].get_fullpath()
         layoutstring=self["layoutstring"].value
@@ -10948,6 +10946,8 @@ if __name__=='__main__':
 
     #printall()
     #answer=raw_input("Hit ENTER to close")
+
+
 
 
 
