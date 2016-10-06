@@ -1,0 +1,5 @@
+[Locations]
+source_directory = C:\Users\localadmin1\Desktop\Platereader output
+target_directory = C:\PHENOS
+user_folder = Software Test
+
