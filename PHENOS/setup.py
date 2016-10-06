@@ -4,7 +4,7 @@
 from setuptools import setup, find_packages
 import os
 
-#PHENOS2
+#PHENOS
 """
 
 """
@@ -27,7 +27,7 @@ def check_directories():
             os.mkdir(ed)
             #logging.info("Directory '{}' created.".format(ed))
 
-check_directories()
+#check_directories()
 
 with open('README.rst') as f:
     readme = f.read()
@@ -36,12 +36,18 @@ with open('LICENSE') as f:
     license = f.read()
 
 setup(name='phenos',
-      version='0.2.0',
+      version='3.2.0',
       description='tools for handling solid media phenotyping data',
       long_description=readme,
       author='David B. H. Barton',
       author_email='dbh8@leicester.ac.uk',
-      url='',
+      url='http://github.com/gact/phenos',
       license=license,
-      packages=find_packages(exclude=('tests', 'docs')))
+      install_requires=['numpy',
+                        'scipy',
+                        'matplotlib',
+                        'tables',
+                        'xlrd',
+                        'brewer2mpl'],
+      packages=['phenos'])
 
