@@ -6,12 +6,13 @@
 from datetime import datetime
 from collections import defaultdict,Counter
 from itertools import combinations,izip,chain,product
-import os,sys,shutil
+import os,sys,platform,shutil
 import re,csv,xlrd
 from math import ceil
 from string import Formatter
 from random import shuffle
 import win32com.client
+import ConfigParser
 import logging
 import traceback
 import copy
@@ -59,7 +60,6 @@ version="2.2"
 
 usecontrolsdatabase=True
 shareddbasenameroot="_phenos_shared_database"
-platereader_output="C:/Users/localadmin1/Desktop/Platereader output"
 
 #
 def recurse_through_filereadertypes(cls,filepath,
@@ -141,6 +141,23 @@ def originalfilename_from_shareddata(shareddata):
                             DT,
                             shareddata["extension"])
 
+def get_platereader_output_loc(configfilename="config.txt"):
+    pth=os.path.join(Locations().rootdirectory,configfilename)
+    if not os.path.exists(pth):
+        LOG.critical("{} does not exist. Create it and put in it "
+                     "the name of the directory where platereader "
+                     "data is saved"
+                     .format(pth))
+        sys.exit()
+    with open(pth,"rb") as fileob:
+        outputpath=fileob.read().strip()
+        if not os.path.exists(outputpath):
+            LOG.critical("{} specifies a platereader output path "
+                         "({}) which does not exist"
+                         .format(pth,outputpath))
+            sys.exit()
+        return os.path.normpath(outputpath)
+
 def split_records_by_rQTLgroup(ob):
     if not hasattr(ob,"records_by_rQTLgroup"):
         ob.records_by_rQTLgroup=defaultdict(list)
@@ -168,13 +185,13 @@ def copydatato(experimentid,targetfolder=None,
                dbaseobs='copy',
                report=True):
     if targetfolder is None:
-        targetfolder=os.path.split(Locations().currentdirectory+"_ok")[-1]
+        targetfolder=os.path.split(Locations().get_currentuserpath()+"_ok")[-1]
     CF=CombiFiles()[experimentid]
     if not CF:
         LOG.critical("can't find experimentid {} in {}"
                      .format(experimentid,Locations().currentdbasepath))
         return False
-    datasourcepath=Locations().currentdirectory
+    datasourcepath=Locations().get_currentuserpath()
     
     subfoldername=CF.get_subfoldername()
     plotssourcefolder=os.path.join(Locations().get_plotspath(),
@@ -291,55 +308,62 @@ class Locations(object):
 
     scriptdir=os.path.dirname(os.path.realpath(sys.argv[0]))
     rootdirectory=None
-
+    userfolders=[]
+    userdbases={}
     mainlocs=[]
-    datpaths=[]
-    dbasepaths=[]
-    currentindex=0
-    currentdirectory=None
-    currentdbasepath=None
-    dbases={}
-    currentdbase=None
+    currentuserfolder=None
+    currentuserdbasepath=None
+    currentuserdbase=None
     shareddbase=None
-    controlsdbase=None
-    should_reload_database=False
 
-    def __init__(self,datfolder=None):
+    def __init__(self,userfolder=None):
         self.__dict__ = self._shared_state
         if Locations.rootdirectory is None:
-            loc=Locations.scriptdir
-            Locations.rootdirectory=self.find_rootdir(loc)
-        if datfolder is None:
-            Locations.currentdirectory=self[Locations.currentindex]
-            Locations.currentdbasepath=self.get_individualdbasepath()
-        else:
-            datpath=os.path.join(Locations.rootdirectory,
-                                 Locations()["datafiles"],datfolder)
-            Locations.currentindex=self.find_datpaths().index(datpath)
-            Locations.currentdirectory=self[Locations.currentindex]
-            Locations.currentdbasepath=self.get_individualdbasepath()
-            
-        with open(self.get_cursorfilepath(),"r") as CF:
-            cursor_loc=os.path.join(self["datafiles"],CF.read().strip())
-            assert cursor_loc in self.find_datpaths()
-            self.set_datpath(cursor_loc)
+            self.get_config_info()
+        self.get_userfolders()
+        if userfolder is not None:
+            self.set_userfolder(userfolder)
 
-    def X__init__(self,datfolder=None):
-        self.__dict__ = self._shared_state
-        if Locations.rootdirectory is None:
-            loc=Locations.scriptdir
-            Locations.rootdirectory=self.find_rootdir(loc)
-        if datfolder is None:
-            Locations.currentdirectory=self[Locations.currentindex]
-            Locations.currentdbasepath=self.get_individualdbasepath()
-            cursor_loc=""
-            with open(self.get_cursorfilepath(),"r") as CF:
-                cursor_loc=os.path.join(self["datafiles"],CF.read().strip())
-            self.set_datpath(cursor_loc)
+    def get_config_filepath(self):
+        #Thanks Tom Walsh for this!
+        platform_system=platform.system()
+        if platform_system!='Windows':
+            raise RuntimeError("unsupported platform: {!r}".format(platform_system))
         else:
-            datpath=os.path.join(Locations.rootdirectory,
-                                 self["datafiles"],datfolder)
-            self.set_datpath(datpath)
+            appdata=os.getenv('APPDATA')
+            if appdata is None or not os.path.isdir(appdata):
+                raise RuntimeError("%APPDATA% environment variable is invalid or undefined")
+            config_filepath=os.path.join(appdata,'PHENOS','config.txt')
+            if os.path.exists(config_filepath):
+                LOG.info("Found config file at {}".format(config_filepath))
+                return config_filepath
+            else:
+                config_filepath=os.path.join(self.scriptdir,'PHENOS','config.txt')
+                if os.path.exists(config_filepath):
+                    LOG.info("Found config file in script directory at {}"
+                             .format(config_filepath))
+                    return config_filepath
+
+    def get_config_info(self):
+        Locations.config_filepath=self.get_config_filepath()
+        Locations.configparser=ConfigParser.SafeConfigParser()
+        Locations.configparser.read(Locations.config_filepath)
+        RD=Locations.configparser.get("Locations",
+                                      "target_directory",
+                                      self.find_rootdir())
+        Locations.rootdirectory=os.path.normpath(RD)
+        PO=Locations.configparser.get("Locations",
+                                      "source_directory",
+                                      None)
+        if not PO:
+            LOG.critical("No platereader_output directory defined")
+            sys.exit()
+        Locations.platereader_output=os.path.normpath(PO)
+        UF=Locations.configparser.get("Locations",
+                                      "user_folder",
+                                      "Software Test")
+        Locations.currentuserfolder=UF
+        return Locations.configparser
 
     def find_rootdir(self,searchdir=None):
         if searchdir is None:
@@ -366,77 +390,40 @@ class Locations(object):
         Locations.mainlocs=mainlocs
         return Locations.mainlocs
 
-    def find_datpaths(self):
-        datpaths=[]
-        for name in os.listdir(self["datafiles"]):
-            datpath=self.datname_to_datpath(name)
-            if os.path.isdir(datpath):
-                datpaths.append(datpath)
-        Locations.datpaths=datpaths
-        return Locations.datpaths
+    def get_userfolders(self):
+        userfolders=[]
+        for userfolder in os.listdir(self["datafiles"]):
+            userfolderpath=self.userfolder_to_userpath(userfolder)
+            if os.path.isdir(userfolderpath):
+                userfolders.append(userfolder)
+        Locations.userfolders=userfolders
+        return Locations.userfolders
 
-    def get_dbase(self,dbasefolder=shareddbasenameroot,reload=False):
+    def get_dbase(self,userfolder=None,reload=False):
+        if userfolder is None:
+            userfolder=Locations.currentuserfolder
         if reload:
-            if dbasefolder in Locations.dbases:
-                del Locations.dbases[dbasefolder]
-        if dbasefolder not in Locations.dbases:
-            if not dbasefolder:
-                dbasefolder=os.path.basename(Locations.currentdirectory)
-            if dbasefolder==shareddbasenameroot:
+            if userfolder in Locations.userdbases:
+                del Locations.userdbases[userfolder]
+        if userfolder not in Locations.userdbases:
+            if userfolder==shareddbasenameroot:
                 DIR=Locations.rootdirectory
             else:
-                DIR=os.path.join(self["datafiles"],dbasefolder)
-            pth=os.path.join(DIR,"_{}.h5".format(dbasefolder))
-            Locations.dbases[dbasefolder]=DBase(pth)
-        return Locations.dbases[dbasefolder]
-
-    def get_individualdbasepath(self,datpath=None):
-        if datpath is None:
-            datpath=Locations.currentdirectory
-        foldername=os.path.split(datpath)[-1]
-        return os.path.join(datpath,
-                            "_{}.h5".format(foldername))
-
-    def find_dbasepaths(self):
-        dbasepaths=[]
-        for datpath in self.find_datpaths():
-            dbasepaths.append(self.get_individualdbasepath(datpath))
-        Locations.dbasepaths=dbasepaths
-        return Locations.dbasepaths
-
-    def get_shareddbase(self):
-        if not getattr(Locations,"shareddbase",None):
-            lst=os.path.join(Locations.rootdirectory,
-                             "__phenos_shared_database.h5")
-            Locations.shareddbasepath=lst
-            Locations.shareddbase=DBase(Locations.shareddbasepath)
-        return Locations.shareddbase
-
-    def get_individualdbase(self):
-        if Locations.currentdbase is None:
-            #print "FIRST INSTANTIATION"
-            Locations.currentdbase=DBase(Locations.currentdbasepath)
-            Locations.should_reload_database=False
-        elif Locations.should_reload_database:
-            #print "LOADING DIFFERENT"
-            self.__exit__()
-            Locations.currentdbase=DBase(Locations.currentdbasepath)
-            Locations.should_reload_database=False
-        return Locations.currentdbase
+                DIR=os.path.join(self["datafiles"],userfolder)
+            pth=os.path.join(DIR,"_{}.h5".format(userfolder))
+            Locations.userdbases[userfolder]=DBase(pth)
+            if userfolder==shareddbasenameroot:
+                Locations.shareddbase=Locations.userdbases[userfolder]
+        return Locations.userdbases[userfolder]
 
     def get_plotspath(self):
-        currentfolder=os.path.split(self.currentdirectory)[-1]
-        pp=os.path.join(self["plots"],currentfolder)
+        pp=os.path.join(self["plots"],Locations.currentuserfolder)
         prepare_path(pp)
         return pp
 
     def get_emptyplatespath(self):
         pp=os.path.join(self["plots"],"Empty plate plots")
         prepare_path(pp)
-        return pp
-
-    def get_cursorfilepath(self):
-        pp=os.path.join(self["datafiles"],Locations.cursorfilename)
         return pp
 
     def get_newlogpath(self):
@@ -457,182 +444,93 @@ class Locations(object):
         sortedlogs.sort()
         return sortedlogs[-1][-1]
 
-    def get_controlsdirectory(self):
-        pp=os.path.join(self["datafiles"],"Controls")
-        prepare_path(pp)
-        return pp
-
-    def get_controlsdbase(self):
-        pp=os.path.join(self.get_controlsdirectory(),"_Controls.h5")
-        if Locations.controlsdbase is None:
-            Locations.controlsdbase=DBase(pp)
-        elif Locations.should_reload_database:
-            self.__exit__()
-            Locations.controlsdbase=DBase(pp)
-            Locations.should_reload_database=False
-        return Locations.controlsdbase
-
     def __exit__(self,type=None,value=None,traceback=None):
-        try:
-            Locations.currentdbase.fileob.close()
-        except Exception as e:
-            LOG.warning("couldn't properly shut Locations.currentdbase")
-        Locations.currentdbase=None
-        try:
-            Locations.shareddbase.fileob.close()
-        except Exception as e:
-            LOG.warning("couldn't properly shut Locations.shareddbase")
-        Locations.shareddbase=None
-        try:
-            Locations.controldbase.fileob.close()
-        except Exception as e:
-            LOG.warning("couldn't properly shut Locations.controldbase")
-        Locations.controldbase=None
+        if Locations.currentuserdbase:
+            try:
+                Locations.currentuserdbase.fileob.close()
+            except Exception as e:
+                LOG.warning("couldn't properly shut Locations.currentdbase")
+            Locations.currentuserdbase=None
+        if Locations.shareddbase:
+            try:
+                Locations.shareddbase.fileob.close()
+            except Exception as e:
+                LOG.warning("couldn't properly shut Locations.shareddbase")
+            Locations.shareddbase=None
 
     def __getitem__(self,key):
-        if type(key)==int:
-            lst=os.path.join(Locations.rootdirectory,
-                             Locations.subfolderlookup["datafiles"],
-                             self.find_datpaths()[key])
-            Locations.currentdirectory=lst
-            fullpath=Locations.currentdirectory
-        else:
-            key=key.lower().replace(" ","")
-            if key in Locations.subfolderlookup:
-                fullpath=os.path.join(Locations.rootdirectory,
-                                      Locations.subfolderlookup[key])
-            elif key in self.find_datpaths():
-                fullpath=os.path.join(Locations.rootdirectory,
-                                      Locations.subfolderlookup["datafiles"],
-                                      key)
+        key=key.lower().replace(" ","")
+        if key in Locations.subfolderlookup:
+            fullpath=os.path.join(Locations.rootdirectory,
+                                  Locations.subfolderlookup[key])
+        elif key in self.get_userfolders():
+            fullpath=os.path.join(Locations.rootdirectory,
+                                  Locations.subfolderlookup["datafiles"],
+                                  key)
         fullpath=check_path(fullpath)
         prepare_path(fullpath)
         return fullpath
-
-    def X__getitem__(self,key):
-        if type(key)==int:
-            lst=os.path.join(Locations.rootdirectory,
-                             Locations.subfolderlookup["datafiles"],
-                             self.find_datpaths()[key])
-            Locations.currentdirectory=lst
-            fullpath=Locations.currentdirectory
-        else:
-            key=key.lower().replace(" ","")
-            try:
-                keypath=os.path.join(self["datafiles"],key)
-            except:
-                keypath="NEVERIN"
-            if key in Locations.subfolderlookup:
-                fullpath=os.path.join(Locations.rootdirectory,
-                                      Locations.subfolderlookup[key])
-            elif key in self.find_datpaths():
-                fullpath=os.path.join(Locations.rootdirectory,
-                                      Locations.subfolderlookup["datafiles"],
-                                      key)
-            elif keypath in self.find_datpaths():
-                fullpath=keypath
-        fullpath=check_path(fullpath)
-        prepare_path(fullpath)
-        return fullpath
-
-    def __iter__(self):
-        for i in self.find_dbasepaths():
-            yield i
 
     def __str__(self):
-        output=[self.find_rootdir()]
-        output+=self.find_mainlocs()
-        output+=self.find_datpaths()
-        output+=["> "+Locations.currentdbasepath]
+        output=[Locations.rootdirectory]
+        output+=Locations.userfolders
+        output+=["> "+Locations.currentuserfolder]
         return os.linesep.join(output)
         return output
 #
-    def datname_to_datpath(self,datname):
-        datname=os.path.basename(datname)
-        return os.path.join(self["datafiles"],datname)
+    def userfolder_to_userpath(self,userfolder):
+        return os.path.join(self["datafiles"],userfolder)
 
-    def get_datpath_index(self,datname_or_datpath):
-        datpath=self.datname_to_datpath(datname_or_datpath)
-        try:
-            return self.find_datpaths().index(datpath)
-        except:
-            return 0
+    def set_userfolder(self,userfolder,create=False):
+        if userfolder==Locations.currentuserfolder:
+            return True
+        if userfolder not in self.get_userfolders():
+            if create:
+                self.add_new_userfolder(userfolder,setfolder=False)
+            else:
+                previoususerfolder=userfolder
+                userfolder="Software Test"
+                LOG.error("Can't find userfolder {} "
+                          "so setting to Software Test"
+                          .format(previoususerfolder,userfolder))
+        #
+        Locations.currentuserfolder=userfolder
+        Locations.configparser.set('Locations', 'user_folder', userfolder)
+        self.write_to_config()
 
-    def get_index_from_file(self):
-        cursor_loc=""
-        with open(self.get_cursorfilepath(),"r") as CF:
-            cursor_loc=os.path.join(self["datafiles"],CF.read().strip())
-        return get_datpath_index(cursorloc)
+    change=set_userfolder
 
-    def set_index(self,index):
-        if index==Locations.currentindex:
-            return
-        Locations.currentindex=index
-        Locations.currentdirectory=self[index]
-        Locations.currentdbasepath=self.get_individualdbasepath()
-        Locations.should_reload_database=True
-        with open(self.get_cursorfilepath(),"w") as CF:
-            CF.write(os.path.split(Locations.currentdirectory)[-1])
-        return Locations.currentdbasepath
+    def write_to_config(self):
+        with open(Locations.config_filepath,'w') as configfile:
+            Locations.configparser.write(configfile)
 
-    def Xset_index(self,index):
-        if index is False:
-            index=0
-        Locations.currentindex=index
-        Locations.currentdirectory=self[index]
-        Locations.currentdbasepath=self.get_individualdbasepath()
-        Locations.should_reload_database=True
-        with open(self.get_cursorfilepath(),"w") as CFP:
-            CFP.write(os.path.split(Locations.currentdirectory)[-1])
-        return Locations.currentdbasepath
-
-    def set_datpath(self,datname_or_datpath):
-        index=self.get_datpath_index(datname_or_datpath)
-        if index is False:
-            index=get_index_from_file()
-            LOG.error("Can't find datname_or_datpath {} "
-                      "so setting to "
-                      .format(datname_or_datpath,self.find_datpaths()[index]))
-        return self.set_index(index)
-
-    def __call__(self,datname_or_datpath):
-        return self.set_datpath(datname_or_datpath)
-        #self.get_individualdbase() #no, wait until called
-
-    def next(self):
-        index=Locations.currentindex+1
-        if index>=len(self.find_datpaths()):
-            index=0
-        self.set_index(index)
-        #self.get_individualdbase() #no, wait until called
-        return Locations.currentdbasepath
-
-    def reset(self):
-        self.find_datpaths()
-        self.set_index(0)
-        #self.get_individualdbase() #no, wait until called
-        return Locations.currentdbasepath
-
-    def add_new_datafolder(self,newname):
+    def add_new_userfolder(self,newname,setfolder=True):
+        """
+        """
         copyfolderpath=os.path.join(self["datafiles"],"New folder")
         newpath=os.path.join(self["datafiles"],newname)
-        assert os.path.exists(copyfolderpath)
-        if newpath in Locations.datpaths:
+        if not os.path.exists(copyfolderpath):
+            os.makedirs(copyfolderpath)
+        if newname in Locations.userfolders:
             LOG.error("{} already exists".format(newpath))
             return None
         else:
             try:
                 copy_contents_to(copyfolderpath,newpath,report=True)
-                formerindex=Locations.currentindex
-                Locations.datpaths.append(newpath)
-                self.set_datpath(newname)
+                Locations.userfolders.append(newname)
                 LOG.info("created new data folder {}"
                           .format(newname))
+                if setfolder:
+                    self.set_userfolder(newname)
                 return newpath
             except Exception as e:
                 LOG.error("couldn't create new data folder {} because {} {}"
                           .format(newname,e,get_traceback()))
                 return None
+
+    def get_currentuserpath(self):
+        return os.path.join(self["datafiles"],Locations.currentuserfolder)
+#
 
 class GraphicGenerator(object):
     pathformatter="{plotfolder}/{userfolder}/{experimentfolder}/{prefix}{graphicsnameroot}{suffix}.{extension}"
@@ -713,7 +611,7 @@ class GraphicGenerator(object):
     def get_graphicspath(self,**kwargs):
         pathformatter=kwargs.get("pathformatter",self.pathformatter)
         kwargs.setdefault("plotfolder",Locations()["plots"])
-        CD=Locations().currentdirectory
+        CD=Locations().get_currentuserpath()
         kwargs.setdefault("userfolder",os.path.split(CD)[-1])
         kwargs.setdefault("experimentfolder",self.get_subfoldername())
         kwargs.setdefault("graphicsnameroot",self.get_graphicsnameroot())
@@ -2614,7 +2512,7 @@ class rQTLinputReader(GenotypeData):
                                   "CombiReadings rqtlgroup {}"
                                   .format(rqtlgroup))
                         continue
-                    UD=os.path.split(Locations().currentdirectory)[-1]
+                    UD=os.path.split(Locations().get_currentuserpath())[-1]
                     filename=("rQTL CombiReadings {} {}.csv"
                               .format(UD,rqtlgroup))
                     filepath=os.path.join(Locations().get_plotspath(),
@@ -4136,7 +4034,7 @@ class DBRecord(DBAtom):
         if getattr(tableclass,"_dbasenameroot",None):
             self.dbasenameroot=tableclass._dbasenameroot
         elif not self.dbasenameroot:
-            CURRENTLOC=Locations().currentdirectory
+            CURRENTLOC=Locations().get_currentuserpath()
             self.dbasenameroot=os.path.basename(CURRENTLOC)
 
         self.atoms=[]
@@ -4845,7 +4743,7 @@ class DBTable(object):
             if getattr(self.__class__,"_dbasenameroot",None):
                 dbasenameroot=self.__class__._dbasenameroot
             else:
-                CURRENTLOC=Locations().currentdirectory
+                CURRENTLOC=Locations().get_currentuserpath()
                 dbasenameroot=os.path.basename(CURRENTLOC)
         self.__dict__ = self._shared_state.setdefault(dbasenameroot,{})
         self.dbasenameroot=dbasenameroot
@@ -6746,6 +6644,14 @@ class PlateLayout(DBRecord,GraphicGenerator):
                              isblank=blnk,
                              groupid=str(r.get("groupname",None)) )
             self.records.append(pp)
+        if len(self.records)!=plate["capacity"].value:
+            LOG.error("Incorrect number of plate positions for PlateLayout "
+                      "{} ({} not {} as expected)"
+                      .format(str(self),
+                              len(self.records),
+                              plate["capacity"].value))
+            return
+            
         self.update_atoms(plate=plate,
                           size=os.path.getsize(filepath),
                           genotyped=self.is_genotyped(),
@@ -8015,7 +7921,7 @@ class CombiFile(DBRecord,GraphicGenerator):
                 self.update_atoms(allprocessed=True)
             PSFP=self.get_plotssubfolderpath()
             if os.path.exists(PSFP):
-                CD=Locations().currentdirectory
+                CD=Locations().get_currentuserpath()
                 CDname=os.path.split(CD)[-1]
                 lnkname=os.path.join(PSFP,"~Data files_"+CDname+".lnk")
                 create_Windows_shortcut(target=CD,location=lnkname)
@@ -8110,7 +8016,7 @@ class CombiFile(DBRecord,GraphicGenerator):
         open_on_Windows(folderpath)
         if create_shortcut:
             create_Windows_shortcut(target=folderpath,
-                                    location=os.path.join(Locations().currentdirectory,
+                                    location=os.path.join(Locations().get_currentuserpath(),
                                                           "~"+sfname+".lnk"))
 
 class CombiFiles(DBTable,InMemory):
@@ -8658,7 +8564,7 @@ class ControlledExperiments(DBTable,InMemory):
         cf=None
         for cf in CombiFiles():
             CEXS=self.create_controlled_experiments(cf,read=read,store=store)
-        filename=os.path.join(Locations().currentdirectory,
+        filename=os.path.join(Locations().get_currentuserpath(),
                               "_ControlledExperiments.tab")
         self.output_to_txt(filename,overwrite=True)
 
@@ -9072,7 +8978,7 @@ class File(DBRecord,GraphicGenerator):
 
     def get_RenamedFile(self,store=True):
         RF=RenamedFile(renamedfilename=self["filepath"].value,
-                       renamedfolder=Locations().currentdirectory)
+                       renamedfolder=Locations().get_currentuserpath())
         RF.calculate_all()
         if store:
             if RF not in RenamedFiles():
@@ -9122,9 +9028,9 @@ class Files(DBTable,InMemory):
     @classmethod
     def get_dmonitor(cls):
         if hasattr(cls,"dmonitor"):
-            if cls.dmonitor.directory==Locations().currentdirectory:
+            if cls.dmonitor.directory==Locations().get_currentuserpath():
                 return cls.dmonitor
-        cls.dmonitor=DirectoryMonitor(Locations().currentdirectory,
+        cls.dmonitor=DirectoryMonitor(Locations().get_currentuserpath(),
                                       include=[".xlsx",".DAT",".csv"],
                                       exclude=[".txt",".p"])
         return cls.dmonitor
@@ -9307,6 +9213,7 @@ class OriginalFolder(DBString):
 
             OFil=rec["originalfilename"]
             if OFil.is_valid():
+                platereader_output=get_platereader_output_loc()
                 pth=os.path.join(platereader_output,OFil.value)
                 if os.path.exists(pth):
                     self.set_value(platereader_output)
@@ -9401,6 +9308,7 @@ class RenamedFiles(DBSharedTable):
         self.store_many_record_objects(all)
 
     def return_platereader_output_list(self):
+        platereader_output=get_platereader_output_loc()
         output={}
         for rf in self:
             if rf["originalfolder"].is_valid():
@@ -10937,13 +10845,15 @@ class Autocurator(object):
 
 #MAIN #########################################################################
 if __name__=='__main__':
-    setup_logging("CRITICAL")
+    #setup_logging("CRITICAL")
+    setup_logging("DEBUG")
     sys.excepthook=log_uncaught_exceptions
-
-    Locations().set_datpath("Software Test")
+    """
+    Locations().change("Software Test")
     import doctest
     doctest.testmod()
-
+    """
+    print Locations()
     #printall()
     #answer=raw_input("Hit ENTER to close")
 
