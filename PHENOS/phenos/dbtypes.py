@@ -3,37 +3,32 @@
 """
 
 """
+#STANDARD LIBRARY
+import os,sys,platform,shutil,copy,re,csv
+import logging,ConfigParser,traceback,colorsys
+import time,subprocess,urllib2
 from datetime import datetime
 from collections import defaultdict,Counter
 from itertools import combinations,izip,chain,product
-import os,sys,platform,shutil
-import re,csv,xlrd
 from math import ceil
 from string import Formatter
 from random import shuffle
+#OTHER
 import win32com.client
-import ConfigParser
-import logging
-import traceback
-import copy
-import colorsys
-import time
-import subprocess
-import urllib2
-
+import xlrd
 import tables as tbs
 import numpy as np
 from scipy.stats import ttest_ind, norm, ttest_ind, levene
 import brewer2mpl
-from matplotlib import animation,colors,patches,ticker
 import matplotlib.pyplot as pyplt
 import matplotlib.cm as clrmap
 import matplotlib.pylab as pylab
-
+from matplotlib import animation,colors,patches,ticker
+#phenos
 from core import *
 from graphics import *
 from gui import browse
-
+#
 try:
     if sys.platform.startswith("win"):
         os.environ["R_USER"] = "localadmin1"
@@ -55,8 +50,8 @@ except:
 # #############################################################################
 
 filename=os.path.basename(__file__)
-authors=("Dave B. H. Barton")
-version="2.2"
+authors=("David B. H. Barton")
+version="2.5"
 
 usecontrolsdatabase=True
 shareddbasenameroot="_phenos_shared_database"
@@ -141,23 +136,6 @@ def originalfilename_from_shareddata(shareddata):
                             DT,
                             shareddata["extension"])
 
-def get_platereader_output_loc(configfilename="config.txt"):
-    pth=os.path.join(Locations().rootdirectory,configfilename)
-    if not os.path.exists(pth):
-        LOG.critical("{} does not exist. Create it and put in it "
-                     "the name of the directory where platereader "
-                     "data is saved"
-                     .format(pth))
-        sys.exit()
-    with open(pth,"rb") as fileob:
-        outputpath=fileob.read().strip()
-        if not os.path.exists(outputpath):
-            LOG.critical("{} specifies a platereader output path "
-                         "({}) which does not exist"
-                         .format(pth,outputpath))
-            sys.exit()
-        return os.path.normpath(outputpath)
-
 def split_records_by_rQTLgroup(ob):
     if not hasattr(ob,"records_by_rQTLgroup"):
         ob.records_by_rQTLgroup=defaultdict(list)
@@ -185,13 +163,13 @@ def copydatato(experimentid,targetfolder=None,
                dbaseobs='copy',
                report=True):
     if targetfolder is None:
-        targetfolder=os.path.split(Locations().get_currentuserpath()+"_ok")[-1]
+        targetfolder=os.path.split(Locations().get_userpath()+"_ok")[-1]
     CF=CombiFiles()[experimentid]
     if not CF:
         LOG.critical("can't find experimentid {} in {}"
                      .format(experimentid,Locations().currentdbasepath))
         return False
-    datasourcepath=Locations().get_currentuserpath()
+    datasourcepath=Locations().get_userpath()
     
     subfoldername=CF.get_subfoldername()
     plotssourcefolder=os.path.join(Locations().get_plotspath(),
@@ -324,63 +302,18 @@ class Locations(object):
         if userfolder is not None:
             self.set_userfolder(userfolder)
 
-    def get_config_filepath(self):
-        #Thanks Tom Walsh for this!
-        platform_system=platform.system()
-        if platform_system!='Windows':
-            raise RuntimeError("unsupported platform: {!r}".format(platform_system))
-        else:
-            appdata=os.getenv('APPDATA')
-            if appdata is None or not os.path.isdir(appdata):
-                raise RuntimeError("%APPDATA% environment variable is invalid or undefined")
-            config_filepath=os.path.join(appdata,'PHENOS','config.txt')
-            if os.path.exists(config_filepath):
-                LOG.info("Found config file at {}".format(config_filepath))
-                return config_filepath
-            else:
-                config_filepath=os.path.join(self.scriptdir,'PHENOS','config.txt')
-                if os.path.exists(config_filepath):
-                    LOG.info("Found config file in script directory at {}"
-                             .format(config_filepath))
-                    return config_filepath
-
     def get_config_info(self):
-        Locations.config_filepath=self.get_config_filepath()
-        Locations.configparser=ConfigParser.SafeConfigParser()
-        Locations.configparser.read(Locations.config_filepath)
-        RD=Locations.configparser.get("Locations",
-                                      "target_directory",
-                                      self.find_rootdir())
-        Locations.rootdirectory=os.path.normpath(RD)
-        PO=Locations.configparser.get("Locations",
-                                      "source_directory",
-                                      None)
-        if not PO:
+        CD=get_config_dict()
+        Locations.config_filepath=CD["config_filepath"]
+        Locations.configparser=CD["configparser"]
+        try:
+            Locations.platereader_output=CD["source_directory"]
+        except:
             LOG.critical("No platereader_output directory defined")
             sys.exit()
-        Locations.platereader_output=os.path.normpath(PO)
-        UF=Locations.configparser.get("Locations",
-                                      "user_folder",
-                                      "Software Test")
-        Locations.currentuserfolder=UF
+        Locations.rootdirectory=CD["target_directory"]
+        Locations.currentuserfolder=CD["user_folder"]
         return Locations.configparser
-
-    def find_rootdir(self,searchdir=None):
-        if searchdir is None:
-            searchdir=Locations.scriptdir
-        rootdir=False
-        shutdown=0
-        while not rootdir:
-            if os.path.exists(os.path.join(searchdir,"Data files")):
-                rootdir=searchdir
-            else:
-                searchdir=os.path.split(searchdir)[0]
-                if not searchdir:
-                    break
-            shutdown+=1
-            if shutdown>100:
-                break
-        return rootdir
 
     def find_mainlocs(self):
         mainlocs=[]
@@ -508,7 +441,7 @@ class Locations(object):
         """
         """
         copyfolderpath=os.path.join(self["datafiles"],"New folder")
-        newpath=os.path.join(self["datafiles"],newname)
+        newpath=self.get_userpath(newname)
         if not os.path.exists(copyfolderpath):
             os.makedirs(copyfolderpath)
         if newname in Locations.userfolders:
@@ -528,8 +461,14 @@ class Locations(object):
                           .format(newname,e,get_traceback()))
                 return None
 
-    def get_currentuserpath(self):
-        return os.path.join(self["datafiles"],Locations.currentuserfolder)
+    def get_userpath(self,userfolder=None):
+        if userfolder is None:
+            userfolder=Locations.currentuserfolder
+        return os.path.join(self["datafiles"],userfolder)
+
+    def yield_userpaths(self):
+        for f in Locations.userfolders:
+            yield self.get_userpath(f)
 #
 
 class GraphicGenerator(object):
@@ -611,7 +550,7 @@ class GraphicGenerator(object):
     def get_graphicspath(self,**kwargs):
         pathformatter=kwargs.get("pathformatter",self.pathformatter)
         kwargs.setdefault("plotfolder",Locations()["plots"])
-        CD=Locations().get_currentuserpath()
+        CD=Locations().get_userpath()
         kwargs.setdefault("userfolder",os.path.split(CD)[-1])
         kwargs.setdefault("experimentfolder",self.get_subfoldername())
         kwargs.setdefault("graphicsnameroot",self.get_graphicsnameroot())
@@ -2512,7 +2451,7 @@ class rQTLinputReader(GenotypeData):
                                   "CombiReadings rqtlgroup {}"
                                   .format(rqtlgroup))
                         continue
-                    UD=os.path.split(Locations().get_currentuserpath())[-1]
+                    UD=os.path.split(Locations().get_userpath())[-1]
                     filename=("rQTL CombiReadings {} {}.csv"
                               .format(UD,rqtlgroup))
                     filepath=os.path.join(Locations().get_plotspath(),
@@ -4034,7 +3973,7 @@ class DBRecord(DBAtom):
         if getattr(tableclass,"_dbasenameroot",None):
             self.dbasenameroot=tableclass._dbasenameroot
         elif not self.dbasenameroot:
-            CURRENTLOC=Locations().get_currentuserpath()
+            CURRENTLOC=Locations().get_userpath()
             self.dbasenameroot=os.path.basename(CURRENTLOC)
 
         self.atoms=[]
@@ -4743,7 +4682,7 @@ class DBTable(object):
             if getattr(self.__class__,"_dbasenameroot",None):
                 dbasenameroot=self.__class__._dbasenameroot
             else:
-                CURRENTLOC=Locations().get_currentuserpath()
+                CURRENTLOC=Locations().get_userpath()
                 dbasenameroot=os.path.basename(CURRENTLOC)
         self.__dict__ = self._shared_state.setdefault(dbasenameroot,{})
         self.dbasenameroot=dbasenameroot
@@ -6239,7 +6178,7 @@ class Filepath(DBString):
                 return os.path.join(Locations()["layouts"],
                                     self.value)
             else:
-                subfolder=Locations().datname_to_datpath(rec.dbasenameroot)
+                subfolder=Locations().get_userpath(rec.dbasenameroot)
                 return os.path.join(subfolder,self.value)
         return None
 
@@ -7921,7 +7860,7 @@ class CombiFile(DBRecord,GraphicGenerator):
                 self.update_atoms(allprocessed=True)
             PSFP=self.get_plotssubfolderpath()
             if os.path.exists(PSFP):
-                CD=Locations().get_currentuserpath()
+                CD=Locations().get_userpath()
                 CDname=os.path.split(CD)[-1]
                 lnkname=os.path.join(PSFP,"~Data files_"+CDname+".lnk")
                 create_Windows_shortcut(target=CD,location=lnkname)
@@ -8016,7 +7955,7 @@ class CombiFile(DBRecord,GraphicGenerator):
         open_on_Windows(folderpath)
         if create_shortcut:
             create_Windows_shortcut(target=folderpath,
-                                    location=os.path.join(Locations().get_currentuserpath(),
+                                    location=os.path.join(Locations().get_userpath(),
                                                           "~"+sfname+".lnk"))
 
 class CombiFiles(DBTable,InMemory):
@@ -8564,7 +8503,7 @@ class ControlledExperiments(DBTable,InMemory):
         cf=None
         for cf in CombiFiles():
             CEXS=self.create_controlled_experiments(cf,read=read,store=store)
-        filename=os.path.join(Locations().get_currentuserpath(),
+        filename=os.path.join(Locations().get_userpath(),
                               "_ControlledExperiments.tab")
         self.output_to_txt(filename,overwrite=True)
 
@@ -8978,7 +8917,7 @@ class File(DBRecord,GraphicGenerator):
 
     def get_RenamedFile(self,store=True):
         RF=RenamedFile(renamedfilename=self["filepath"].value,
-                       renamedfolder=Locations().get_currentuserpath())
+                       renamedfolder=Locations().get_userpath())
         RF.calculate_all()
         if store:
             if RF not in RenamedFiles():
@@ -9028,9 +8967,9 @@ class Files(DBTable,InMemory):
     @classmethod
     def get_dmonitor(cls):
         if hasattr(cls,"dmonitor"):
-            if cls.dmonitor.directory==Locations().get_currentuserpath():
+            if cls.dmonitor.directory==Locations().get_userpath():
                 return cls.dmonitor
-        cls.dmonitor=DirectoryMonitor(Locations().get_currentuserpath(),
+        cls.dmonitor=DirectoryMonitor(Locations().get_userpath(),
                                       include=[".xlsx",".DAT",".csv"],
                                       exclude=[".txt",".p"])
         return cls.dmonitor
@@ -9213,7 +9152,7 @@ class OriginalFolder(DBString):
 
             OFil=rec["originalfilename"]
             if OFil.is_valid():
-                platereader_output=get_platereader_output_loc()
+                platereader_output=Locations().platereader_output
                 pth=os.path.join(platereader_output,OFil.value)
                 if os.path.exists(pth):
                     self.set_value(platereader_output)
@@ -9296,7 +9235,7 @@ class RenamedFiles(DBSharedTable):
 
     def populate(self):
         all=[]
-        for subfolder in Locations().datpaths:
+        for subfolder in Locations().yield_userpaths():
             F=Files(os.path.basename(subfolder))
             for FOB in F:
                 RF=self.recordclass(renamedfilename=FOB["filepath"].value,
@@ -9308,7 +9247,7 @@ class RenamedFiles(DBSharedTable):
         self.store_many_record_objects(all)
 
     def return_platereader_output_list(self):
-        platereader_output=get_platereader_output_loc()
+        platereader_output=Locations().platereader_output
         output={}
         for rf in self:
             if rf["originalfolder"].is_valid():
@@ -10042,10 +9981,6 @@ class ControlledReadings(DBTable,InMemory):
     tablepath="/controlledreadings"
     recordclass=ControlledReading
 #
-
-#ANALYSIS #####################################################################
-
-#Have column for each visualization and for each check
 
 #FEATURES #####################################################################
 
@@ -10845,17 +10780,12 @@ class Autocurator(object):
 
 #MAIN #########################################################################
 if __name__=='__main__':
-    #setup_logging("CRITICAL")
-    setup_logging("DEBUG")
+    setup_logging("CRITICAL")
     sys.excepthook=log_uncaught_exceptions
-    """
+
     Locations().change("Software Test")
     import doctest
     doctest.testmod()
-    """
-    print Locations()
-    #printall()
-    #answer=raw_input("Hit ENTER to close")
 
 
 

@@ -3,25 +3,25 @@
 """
 
 """
+#STANDARD LIBRARY
+import os,sys,shutil,colorsys
 from itertools import izip
-import numpy as np
-import os,sys
-import shutil
-import colorsys
+#OTHER
 import brewer2mpl
+import numpy as np
 from matplotlib import animation,colors,patches,ticker
 import matplotlib.cm as clrmap
 import matplotlib.pyplot as pyplt
 import matplotlib.pylab as pylab
 from scipy.stats import norm
-
+#phenos
 from core import LOG,setup_logging,log_uncaught_exceptions,flatten,filterdict,get_traceback
 
 # #############################################################################
 
 filename = os.path.basename(__file__)
-authors = ("Dave B. H. Barton")
-version = "2.3"
+authors = ("David B. H. Barton")
+version = "2.5"
 
 # ###########################################################################
 def display_image(filepath,figsize=(14,9),aspect=1):

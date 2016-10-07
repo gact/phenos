@@ -1,15 +1,23 @@
-'''
+#!/usr/bin/env python -tt
+# -*- coding: utf-8 -*-
 
-
-Here the TreeView widget is configured as a multi-column listbox
-with adjustable column width and column-header-click sorting.
-'''
-
+#STANDARD LIBRARY
+import os,sys
 import Tkinter as tk
 import tkFont
 import ttk
 import tkFileDialog
-import os,sys
+
+# #############################################################################
+
+filename = os.path.basename(__file__)
+authors = ("David B. H. Barton")
+version = "2.5"
+
+"""
+Here the TreeView widget is configured as a multi-column listbox
+with adjustable column width and column-header-click sorting.
+"""
 
 def browse(root=None,
            startingdirectory=None,
@@ -39,20 +47,20 @@ class MultiColumnListbox(object):
                  "and hit Enter.\nClick on header to sort by column",
                  buttontext="Select",
                  headers=["1","2"],
-                 lst=[(a**20,str(a)*a) for a in range(100)],
+                 lists=[(a**20,str(a)*a) for a in range(100)],
                  default=[],
                  height=None,
                  selectmode="browse",
                  notselectable=[],
                  linkedselectionindices=[],
-                 delete_function=None):
+                 delete_fn=None):
         self.__dict__.update(locals().copy())
-        self.value=[]
+        self.values=[None]
 
         if type(self.default) not in [list,tuple]:
             self.default=[self.default]
         if self.height is None:
-            self.height=min(len(self.lst),30)
+            self.height=min(len(self.lists),30)
         
         if root is None:
             self.root=tk.Tk()
@@ -115,28 +123,36 @@ class MultiColumnListbox(object):
     def _build_tree(self):
         for col in self.headers:
             self.tree.heading(col,text=col.title(),
-                command=lambda c=col:self.sortby(self.tree,c,0))
+                command=lambda c=col:self._sortby(self.tree,c,0))
             # adjust the column's width to the header string
-            self.tree.column(col,width=tkFont.Font().measure(col.title()))
+            self.tree.column(col,
+                             width=tkFont.Font().measure(col.title()))
 
         self.lookup_IO={}
-        for i,item in enumerate(self.lst):
+        self.lookup_index={}
+        for i,item in enumerate(self.lists):
             IO=self.tree.insert('','end',values=item)
             self.lookup_IO[item[0]]=IO
+            self.lookup_index[item[0]]=i
             #adjust column's width if necessary to fit each value
             for ix,val in enumerate(item):
                 col_w=tkFont.Font().measure(val)
-                #ADJUST HEIGHT
+                #ADJUST HEIGHT?
                 #https://groups.google.com/forum/#!topic/comp.lang.tcl/dv2urOQTeUA
-                if self.tree.column(self.headers[ix],width=None)<col_w:
-                    self.tree.column(self.headers[ix],width=col_w)
+                if self.tree.column(self.headers[ix],
+                                    width=None)<col_w:
+                    self.tree.column(self.headers[ix],
+                                     width=col_w)
         #self.tree.configure(rowheight=40)
         #preselect default or defaults
         self.autoselect_items(self.default)
 
-    def autoselect_items(self,itemnames):
+    def autoselect_items(self,itemnames=None,itemindices=None):
+        self.focus_indices=[]
         if not itemnames:
-            return
+            if not itemindices:
+                return
+            itemnames=[self.lists[i] for i in itemindices]
         if type(itemnames)!=list:
             itemnames=[itemnames]
         IO=None
@@ -145,45 +161,52 @@ class MultiColumnListbox(object):
                 if itemname in self.lookup_IO:
                     IO=self.lookup_IO[itemname]
                     self.tree.selection_add(IO)
+                    self.focus_indices.append(self.lookup_index[itemname])
         self.tree.focus_set()
         if IO:
             self.tree.focus(IO)
+
+    def focus_set(self):
+        if self:
+            self.container.focus_set()
+            if not self.values:
+                self.autoselect_items(self.default)
+            else:
+                self.autoselect_items(self.values)
 
     def find_linkedselections(self,itemname):
         if not self.linkedselectionindices:
             return []
         else:
-            if len(self.linkedselectionindices)!=len(self.lst):
+            if len(self.linkedselectionindices)!=len(self.lists):
                 LOG.error("MultiColumnListbox argument "
                           "'linkedselectionindices' must "
                           "be a list of numbers the same "
-                          "length as the items in lst")
+                          "length as the items in lists")
                 return []
             #create lookup if not already done
             if not hasattr(self,"lookup_linkindex"):
                 self.lookup_linkindex={}
-                for l,li in zip(self.lst,
+                for l,li in zip(self.lists,
                                 self.linkedselectionindices):
                     self.lookup_linkindex[l[0]]=li
             #
             #return all itemnames stored under the same lookup_linkindex
             LI=self.lookup_linkindex.get(itemname,None)
             if LI:
-                O=[k for k,v
-                   in self.lookup_linkindex.items()
-                   if v==LI]
+                O=[k for k,v in self.lookup_linkindex.items() if v==LI]
                 return O
             else:
                 return [itemname]
 
-    def sortby(self,tree,col,descending):
+    def _sortby(self,tree,col,descending):
         """sort tree contents when a column header is clicked on"""
         # grab values to sort
         data=[(tree.set(child,col),child)
               for child in tree.get_children('')]
         # if the data to be sorted is numeric change to float
         try:
-            data=self.change_numeric(data)
+            data=self._change_numeric(data)
         except:
             pass
         # now sort the data in place
@@ -191,70 +214,65 @@ class MultiColumnListbox(object):
         for ix,item in enumerate(data):
             tree.move(item[1],'',ix)
         # switch the heading so it will sort in the opposite direction
-        CMD=lambda col=col: self.sortby(tree, col, int(not descending))
+        CMD=lambda col=col: self._sortby(tree, col, int(not descending))
         tree.heading(col,command=CMD)
 
     def change_numeric(self,lst):
         return [(float(v),o) for v,o in lst]
 
+    def changeindex(self,change=None,addition=None):
+        itemindices=self.focus_indices or [0]
+        if change:
+            itemindices=[itemindices[-1]+change]
+        if addition:
+            if addition<0:
+                itemindices+=[min(itemindices)+addition]
+            elif addition>0:
+                itemindices+=[max(itemindices)+addition]
+        self.autoselect_items(itemindices=itemindices)
+        return 'break'
+
     def extraselect(self,event=None):
         self.tree.event_generate("<<TreeviewSelect>>")
-        self.choose(quit=False)
+        self.choose(close=False)
         return
-
-        print "SELECTING"
-        self.value=[]
-        #ignoredelay=self.tree.selection()
-        for item in self.tree.selection()[:]:
-            print item
-            value=self.tree.item(item)['values'][0]
-            if self.linkedselectionindices:
-                linkeditems=self.find_linkedselections(value)
-                for item in linkeditems:
-                    if item not in self.value:
-                        self.value.append(item)
-                self.autoselect_items(linkeditems)
-            else:
-                if value not in self.value:
-                    self.value.append(value)
-        print self.value
 
     def selectall(self,event=None):
         self.autoselect_items(self.lookup_IO.keys())
         
 
-    def choose(self,event=None,quit=True):
-        try:
-            self.value=[]
-            for item in self.tree.selection():
-                value=self.tree.item(item)['values'][0]
-                if self.linkedselectionindices:
-                    linkeditems=self.find_linkedselections(value)
-                    for item in linkeditems:
-                        if item not in self.value:
-                            if item not in self.notselectable:
-                                self.value.append(item)
-                    self.autoselect_items(self.value)
-                else:
-                    if value not in self.value:
-                        self.value.append(value)
-            if len(self.value)==1:
-                self.value=self.value[0]
-            elif len(self.value)==0:
-                self.value=None
-            if quit:
+    def choose(self,event=None,close=True,byindices=None):
+        if byindices:
+            selectedvalues=[self.lists[i][0] for i in byindices]
+        else:
+            selectedvalues=[self.tree.item(item)['values'][0]
+                            for item in self.tree.selection()]
+        self.values=[]
+        for value in selectedvalues:
+            if self.linkedselectionindices:
+                linkeditems=self.find_linkedselections(value)
+                for item in linkeditems:
+                    if item not in self.values:
+                        if item not in self.notselectable:
+                            self.values.append(item)
+            else:
+                if value not in self.values:
+                    if value not in self.notselectable:
+                        self.values.append(value)
+            self.autoselect_items(self.values)
+        if close:
+            if self.values:
                 self.quit()
-        except IndexError:
-            self.value=None
         
     def quit(self,event=None):
         self.root.destroy()
 
     def delete(self,event=None):
         self.choose(event)
-        if self.delete_function:
-            self.delete_function(self.value)
-        self.value=None
+        if self.delete_fn:
+            self.delete_fn(self.values)
+        self.values=[None]
+
 
 class EntryBox(object):
     def __init__(self,
@@ -379,170 +397,19 @@ class OptionBox(object):
             self.focusindex=len(self.buttons)-1
         self.focus_on_index()
 
-"""
-class PleaseWaitBox(tk.Frame):
-    def __init__(self,root,
-                 completionlist,
-                 title="PleaseWaitBox",
-                 instruct="Please wait..."):
-        tk.Frame.__init__(self,root)
-        self.root=root
-        self.popup=tk.Toplevel(self)
-        label=tk.Label(self.popup,text=instruct)
-        label.grid(row=0,column=0)
-        label.pack(side="top",fill="both",expand=True,padx=20,pady=20)
-        self.progressbar=ttk.Progressbar(self.popup,
-                                         orient=tk.HORIZONTAL,
-                                         length=200,
-                                         mode='indeterminate')
-        self.progressbar.grid(row=1, column=0)
-        self.progressbar.start()
-        self.completionlist=completionlist
-        self.checkfile()
 
-    def checkfile(self):
-        if self.completionlist[0]==True:
-            self.progressbar.stop()
-            self.popup.destroy()
-        else:
-            #Call this method after 100 ms.
-            self.after(100, self.checkfile) 
-
-class BusyBar(tk.Frame):
-    def __init__(self,master=None,**options):
-        ""
-        http://tkinter.unpythonic.net/wiki/BusyBar
-        ""
-        # make sure we have sane defaults
-        self.master=master
-        self.options=options
-        self.width=options.setdefault('width', 100)
-        self.height=options.setdefault('height', 10)
-        self.background=options.setdefault('background', 'gray')
-        self.relief=options.setdefault('relief', 'sunken')
-        self.bd=options.setdefault('bd', 2)
-        
-        #extract options not applicable to frames
-        self._extractOptions(options)
-        
-        # init the base class
-        tk.Frame.__init__(self, master, options)
-        
-        self.incr=self.width*self.increment
-        self.busy=0
-        self.dir='right'
-        
-        # create the canvas which is the container for the bar
-        self.canvas=tk.Canvas(self, height=self.height, width=self.width, bd=0,
-                           highlightthickness=0, background=self.background)
-        # catch canvas resizes
-        self.canvas.bind('<Configure>', self.onSize)
-        
-        # this is the bar that moves back and forth on the canvas
-        self.scale=self.canvas.create_rectangle(0, 0, self.width*self.barWidth, self.height, fill=self.fill)
-                                                
-        # label that is in the center of the widget
-        self.label=self.canvas.create_text(self.canvas.winfo_reqwidth() / 2,
-                                           self.height / 2, text=self.text,
-                                           anchor="c", fill=self.foreground,
-                                           font=self.font)
-        self.update()
-        self.canvas.pack(side=tk.TOP, fill=tk.X, expand=tk.NO)
-        
-    def _extractOptions(self, options):
-        # these are the options not applicable to a frame
-        self.foreground=pop(options, 'foreground', 'yellow')
-        self.fill=pop(options, 'fill', 'blue')
-        self.interval=pop(options, 'interval', 30)
-        self.font=pop(options, 'font','helvetica 10')
-        self.text=pop(options, 'text', '')
-        self.barWidth=pop(options, 'barWidth', 0.2)
-        self.increment=pop(options, 'increment', 0.05)
-
-    # todo - need to implement config, cget, __setitem__, __getitem__ so it's more like a reg widget
-    # as it is now, you get a chance to set stuff at the constructor but not after
-        
-    def onSize(self, e=None):
-        self.width = e.width
-        self.height = e.height
-        # make sure the label is centered
-        self.canvas.delete(self.label)
-        self.label=self.canvas.create_text(self.width / 2, self.height / 2, text=self.text,
-                                           anchor="c", fill=self.foreground, font=self.font)
-
-    def on(self):
-        self.busy = 1
-        self.canvas.after(self.interval, self.update)
-        
-    def of(self):
-        self.busy = 0
-
-    def update(self):
-        # do the move
-        x1,y1,x2,y2 = self.canvas.coords(self.scale)
-        if x2>=self.width:
-            self.dir='left'
-        if x1<=0:
-            self.dir='right'
-        if self.dir=='right':
-            self.canvas.move(self.scale, self.incr, 0)
-        else:
-            self.canvas.move(self.scale, -1*self.incr, 0)
-
-        if self.busy:
-            self.canvas.after(self.interval, self.update)
-        self.canvas.update_idletasks()
-        
-def pop(dict, key, default):
-    value = dict.get(key, default)
-    if dict.has_key(key):
-        del dict[key]
-    return value
-        
-        
-
-if __name__=='__main__':
-    root=tk.Tk()
-    
-    def popup():
-        win=tk.Toplevel()
-        win.title("I'm busy too!")
-        bb1=BusyBar(win,text='Wait for me!')
-        bb1.pack()
-        for i in range(0,30):
-                time.sleep(0.1)
-                bb1.update()
-                root.update()
-        bb1.of()
-        time.sleep(1)
-        win.destroy()
-
-    t=tk.Text(root)
-    t.pack(side=tk.TOP)
-    bb=BusyBar(root,text='Please Wait')
-    bb.pack(side=tk.LEFT,expand=tk.NO)
-    but=Button(root,text='Pop-up BusyBar',command=popup)
-    but.pack(side=tk.LEFT, expand=tk.NO)
-    q=Button(root, text= 'Quit', command=root.destroy)
-    q.pack(side=tk.LEFT, expand=tk.NO)
-    l=Label(root, text="I'm a status bar !")
-    l.pack(side=tk.RIGHT)
-    bb.on()
-    root.update_idletasks()
-    for i in range(0,30):
-        time.sleep(0.1)
-        root.update()
-    bb.of()
-    root.mainloop()
-"""
 if __name__ == '__main__':
     root=tk.Tk()
+    def printdelete(*args):
+        print ">>",args
+        
     W=MultiColumnListbox(root,
-                         lst=[(c,ord(c),'3') for c in "abcdefghijklm"],
+                         lists=[(c,ord(c),'3') for c in "abcdefghijklm"],
                          default=["c","f"],
                          notselectable=["a"],
                          headers=["char","ord","3"],
-#                         linkedselectionindices=[0,0,0,0,0,0,0,0,
+                         delete_fn=printdelete,
+#                        linkedselectionindices=[0,0,0,0,0,0,0,0,
 #                                                 0,1,1,1,0],
                          selectmode="extended")
     #W=EntryBox(root,
@@ -556,5 +423,5 @@ if __name__ == '__main__':
     #import time
     #time.sleep(4)
     #complete=[True] #waits for selection/cancel
-    print ">",W.value
+    print ">",W.values
     

@@ -1,22 +1,21 @@
 #!/usr/bin/env python -tt
 # -*- coding: utf-8 -*-
 
-import os,sys
+#STANDARD LIBRARY
+import os,sys,time,shutil,subprocess
+import logging,platform,ConfigParser,traceback
 from itertools import chain
 from collections import defaultdict
-import logging
-import traceback
-import time
-import shutil
+#OTHER
 import matplotlib.pyplot as pyplt
 import win32com
-import subprocess
+
 
 # #############################################################################
 
 filename = os.path.basename(__file__)
-authors = ("Dave B. H. Barton")
-version = "2.3"
+authors = ("David B. H. Barton")
+version = "2.5"
 
 LOG=logging.getLogger()
 
@@ -203,6 +202,67 @@ def scriptdir():
 def chscriptdir():
     os.chdir(scriptdir())
 
+def find_rootdir(searchdir=None):
+    if searchdir is None:
+        searchdir=os.path.dirname(os.path.realpath(sys.argv[0]))
+    rootdir=False
+    shutdown=0
+    while not rootdir:
+        if os.path.exists(os.path.join(searchdir,"Logs")):
+            rootdir=searchdir
+        else:
+            searchdir=os.path.split(searchdir)[0]
+            if not searchdir:
+                break
+        shutdown+=1
+        if shutdown>100:
+            break
+    return rootdir
+
+def get_config_filepath():
+    #Thanks Tom Walsh for this!
+    platform_system=platform.system()
+    if platform_system!='Windows':
+        raise RuntimeError("unsupported platform: {!r}".format(platform_system))
+    else:
+        appdata=os.getenv('APPDATA')
+        if appdata is None or not os.path.isdir(appdata):
+            raise RuntimeError("%APPDATA% environment variable is invalid or undefined")
+        config_filepath=os.path.join(appdata,'PHENOS','config.txt')
+        if os.path.exists(config_filepath):
+            try:
+                LOG.info("Found config file at {}".format(config_filepath))
+            except:
+                pass
+            return config_filepath
+        else:
+            config_filepath=os.path.join(scriptdir(),'PHENOS','config.txt')
+            if os.path.exists(config_filepath):
+                try:
+                    LOG.info("Found config file in script directory at {}"
+                             .format(config_filepath))
+                except:
+                    pass
+                return config_filepath
+
+def get_config_dict():
+    CFpth=get_config_filepath()
+    CFpars=ConfigParser.SafeConfigParser()
+    CFpars.read(CFpth)
+    output={"config_filepath":CFpth,
+            "configparser":CFpars,
+            "scriptdirectory":scriptdir(),
+            "target_directory":CFpars.get("Locations",
+                                          "target_directory",
+                                          find_rootdir()),
+            "source_directory":CFpars.get("Locations",
+                                          "source_directory",
+                                          None),
+            "user_folder":CFpars.get("Locations",
+                                     "user_folder",
+                                     "Software Test")}
+    return output
+
 def yield_subpaths(startpath,dig=True,onlytype="all",includeroot=True):
     if dig:
         for root,dirs,files in os.walk(startpath,topdown=True):
@@ -370,25 +430,9 @@ def get_class_by_name(name):
     """
     return globals().get(name,None)
 
-def find_rootdir(searchdir=None):
-    if searchdir is None:
-        searchdir=os.path.dirname(os.path.realpath(sys.argv[0]))
-    rootdir=False
-    shutdown=0
-    while not rootdir:
-        if os.path.exists(os.path.join(searchdir,"Logs")):
-            rootdir=searchdir
-        else:
-            searchdir=os.path.split(searchdir)[0]
-            if not searchdir:
-                break
-        shutdown+=1
-        if shutdown>100:
-            break
-    return rootdir
 
 def get_newlogpath():
-    pp=os.path.join(find_rootdir(),
+    pp=os.path.join(get_config_dict()["target_directory"],
                     "Logs",
                     "phenos{}.log"
                     .format(time.strftime("%y%m%d%H%M%S")))
@@ -506,14 +550,11 @@ class DirectoryWrapper(object):
     def __iter__(self):
         pass
 
-class FileWrapper(object):
-    def __init__(self,filepath=None):
-        pass
-        
+
 #MAIN #########################################################################
 if __name__=='__main__':
     setup_logging("CRITICAL")
     sys.excepthook=log_uncaught_exceptions
 
-    import doctest
-    doctest.testmod()
+    #import doctest
+    #doctest.testmod()

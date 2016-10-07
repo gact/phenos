@@ -10,15 +10,11 @@ from .core import *
 from .dbtypes import *
 from .graphics import *
 from .gui import *
-from .gui2 import *
+#from .gui2 import *
 
 ################################################################################
 
 filename = os.path.basename(__file__)
-authors = ("David Barton")
-version = "0.3"
+authors = ("David B. H. Barton")
+version = "1.0"
 
-
-if __name__=="__main__":
-    import doctest
-    doctest.testmod()
