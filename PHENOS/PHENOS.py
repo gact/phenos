@@ -246,7 +246,7 @@ def count_files_in(folder,dig=False,include=[".csv",".DAT"]):
     return len(dm)
 
 def choose_user_folder(MAINDICT,
-                       IGNORE=["Software Test","All","Controls"]):
+                       IGNORE=["All","Controls"]):
     LST,LSTED=[],[]
     for p in LOCS.yield_userpaths():
         fp=os.path.basename(p)
@@ -254,6 +254,8 @@ def choose_user_folder(MAINDICT,
         if fp not in IGNORE:
             LST.append((fp,fpc))
             LSTED.append(fp)
+    if not LST:
+        LST=[("New folder","")]
     LST.sort()
     DEF=LOCS.currentuserfolder
     if DEF in IGNORE or DEF not in LSTED:
@@ -293,14 +295,15 @@ def choose_user_folder(MAINDICT,
                 USERFOLDER=None
             else:
                 try:
-                    LOCS.add_new_userfolder(USERFOLDER)
+                    if USERFOLDER!="New folder":
+                        LOCS.add_new_userfolder(USERFOLDER,setfolder=True)
                 except Exception as e:
                     instruction=("Can't create {} because {}. Choose again."
                                  .format(fullpath,e,get_traceback()))
                     LOG.error(instruction)
                     USERFOLDER=None
     if USERFOLDER:
-        LOCS.change(USERFOLDER)
+        LOCS.change(USERFOLDER,create=True)
         LOG.info("active folder set to {}".format(USERFOLDER))
         MAINDICT["userfolder"]=USERFOLDER
         return MAINDICT
@@ -532,7 +535,6 @@ def choose_file_letter(MAINDICT):
         LST=[("*new* ({})".format(FILELETTER),""),
              ("*new* (other)",""),]+LST
     DEF=LST[0][0]
-    print "><>",INI.keys()
     root=tk.Tk()
     TIT="PHENOS: '{}'".format(build_filetitle(**locals().copy()))
     LB4=MultiColumnListbox(root,
@@ -947,7 +949,7 @@ def choose_timeoffset(MAINDICT):
     root.geometry('{}x{}+{}+{}'.format(1100,800,100,100))
     root.mainloop()
     TIMEOFFSET=LB7.values[0]
-    
+    if TIMEOFFSET is None: return None
     if TIMEOFFSET=="*other*":
         TIMEOFFSET=None
         instruction="Enter offset (>{})".format(LASTOFFSET)
@@ -961,20 +963,21 @@ def choose_timeoffset(MAINDICT):
             if TIMEOFFSET is None:
                 return None
             try:
-                TIMEOFFSET=int(TIMEOFFSET)
+                numericalTIMEOFFSET=int(TIMEOFFSET)
             except:
-                instruction=("{} not a number. Choose again.")
-                LOG.error(instruction)
-                TIMEOFFSET=None
-            if not LASTOFFSET<TIMEOFFSET<=255:
-                instruction=("{} not OK. Must be {}-255. Choose again."
-                             .format(LASTOFFSET,TIMEOFFSET))
-                LOG.error(instruction)
-                TIMEOFFSET=None
-        TIMEOFFSET="t+{}".format(TIMEOFFSET)
+                numericalTIMEOFFSET=False
+            if type(numericalTIMEOFFSET)==int:
+                if LASTOFFSET<numericalTIMEOFFSET<=255:
+                    TIMEOFFSET="t+{}".format(int(numericalTIMEOFFSET))
+                else:
+                    instruction=("{} not OK. Must be {}-255. Choose again."
+                                 .format(LASTOFFSET,numericalTIMEOFFSET))
+                    LOG.error(instruction)
+                    TIMEOFFSET=None
+                    
     else:
         TIMEOFFSET=TIMEOFFSET.split(" ")[0]
-    
+
     if TIMEOFFSET:
         MAINDICT["timeoffset"]=TIMEOFFSET
         return MAINDICT
@@ -1026,6 +1029,35 @@ def handle_file(MAINDICT):
     targetfilename=build_filetitle(**MAINDICT)
     targetfilepath=os.path.join(LOCS.get_userpath(),
                                 targetfilename)
+    timeoffset=MAINDICT.get("timeoffset","t+0")
+    issurvivor=False
+    survivorstart=None
+    emptyreading=False
+    reorient=False
+    if timeoffset.startswith("St"):
+        """
+        e.g. St50-1, St50+0,St68+13
+        """
+        issurvivor=True
+        parts=timeoffset[2:]
+        if "-" in parts:
+            cardinality="-"
+            parts=parts.split("-")
+        elif "+" in parts:
+            cardinality="+"
+            parts=parts.split("+")
+        if len(parts)!=2:
+            LOG.error("Unacceptable timeoffset string {}".format(timeoffset))
+            return None
+        survivorstart=float(parts[0])
+        timeoffset="t"+cardinality+parts[1]
+    timeoffset=float(timeoffset[1:])
+    if timeoffset==-1:
+        timeoffset=-100
+        emptyreading=True
+
+    if MAINDICT.get("orientation","")=="R":
+        reorient=True
     
     INS=("Original filename=    {}\n\n"
          "Final filename=    {}\n\n"
@@ -1067,7 +1099,12 @@ def handle_file(MAINDICT):
         try:
             fo=File(filepath=str(targetfilename),
                     platelayout=str(layout),
-                    dbasenameroot=userfolder)
+                    dbasenameroot=userfolder,
+                    timeoffset=timeoffset,
+                    reorient=reorient,
+                    emptyreading=emptyreading,
+                    issurvivor=issurvivor,
+                    survivorstart=survivorstart)
             fo.calculate_all()
             fo.store()
             readingcount=fo.read()
@@ -1211,15 +1248,7 @@ def delete_renamedfile(renamedfile,checkboxes=True):
         return
 
     if not checkboxes:
-        CF=fileob["combifile"]
-        if CF.is_valid():
-            CF.delete()
-        if CF in CombiFiles("All"):
-            CombiFiles
-        if fileob:
-            fileob.delete()
-        
-        renamedfile.delete()
+        GOAHEAD="Yes"
     else:
         root=tk.Tk()
         instruction=("ARE YOU SURE YOU WANT TO DELETE\n\n"
@@ -1237,18 +1266,18 @@ def delete_renamedfile(renamedfile,checkboxes=True):
         root.geometry('{}x{}+{}+{}'.format(1100,800,100,100))
         root.mainloop()
         GOAHEAD=OB4.value
-        if GOAHEAD=="Yes":
-            renamedfile.delete()
-            fileob.delete()
-            fullpath=os.path.join(renamedfile["renamedfolder"].value,
-                                  renamedfile["renamedfilename"].value)
-            try:
-                os.remove(fullpath)
-                LOG.info("Removed {}".format(fullpath))
-            except:
-                LOG.error("Couldn't remove {}".format(fullpath))
-            return True
-        return False
+    if GOAHEAD=="Yes":
+        renamedfile.delete()
+        delete_files([fileob],checkboxes=False)
+        fullpath=os.path.join(renamedfile["renamedfolder"].value,
+                              renamedfile["renamedfilename"].value)
+        try:
+            os.remove(fullpath)
+            LOG.info("Removed {}".format(fullpath))
+        except:
+            LOG.error("Couldn't remove {}".format(fullpath))
+        return True
+    return False
 
 def undo_rename():
     lastrenamedfile=RenamedFiles()[-1]
@@ -1321,31 +1350,47 @@ def main_combine():
                                        read=False,
                                        alreadymade=False)
     LST=[cf for cf in combifiledict.values()]
-    if not LST:
-        print "NO"
-        return False
     LST.sort(key=lambda cf:getattr(cf,"timestamp",0),reverse=True)
 
     def timeconvert(tv):
         if tv:
-            return time.asctime(time.localtime(tv))
+            try:
+                return time.asctime(time.localtime(tv))
+            except:
+                pass
         return ""
 
     LST2=[(cf.value,
            cf["treatment"].value,
-           timeconvert(getattr(cf,"timestamp","")))
+           cf["platelayout"].value,
+           cf.is_control(),
+           timeconvert(getattr(cf,"timestamp","")),
+           "NO")
           for cf in LST]
     if not LST2:
-        LOG.error("No combifiles to create in {}"
+        LOG.error("No new combifiles to create in {}"
                   .format(Locations().get_userpath()))
-        return None
 
-    headers=["Files","Treatment","Timestamp of first"]
-    
+    headers=["Files","Treatment","Layout","Is control?",
+             "Timestamp of first","Already created?"]
+    notselectable=None
+
+    if len(CombiFiles())>0:
+        LST3=[(cf.value,
+               cf["treatment"].value,
+               cf["platelayout"].value,
+               cf.is_control(),
+               timeconvert(cf["timestamp"]),
+               "YES")
+               for cf in CombiFiles()]
+        LST2+=[(" ","----","----","")]+LST3
+        notselectable=[l[0] for l in LST3]
+
     root=tk.Tk()
     TIT="PHENOS: '{}'".format(build_filetitle(**locals().copy()))
-    instruction=("Select combifile(s) to create and visualize\n"
+    instruction=("Select combined file(s) to create and visualize\n"
                  "or <Escape> to quit.\n\n"
+                 "Hit <Delete> to remove any combined file(s) already created.\n\n"
                  "PHENOS will close on completion.")
     LB7=MultiColumnListbox(root,
                            title=TIT,
@@ -1353,7 +1398,9 @@ def main_combine():
                            headers=headers,
                            lists=LST2,
                            default=LST2[0][0],
-                           selectmode="extended")
+                           selectmode="extended",
+                           notselectable=notselectable,
+                           delete_fn=delete_combifiles)
     root.focus_force()
     root.geometry('{}x{}+{}+{}'.format(1100,800,100,100))
     root.mainloop()
@@ -1362,8 +1409,12 @@ def main_combine():
         PICK=[PICK]
     output={}
     for P in PICK:
-        CF=combifiledict[P]
-        CF.save(read=True)
+        if P is None or P==' ':
+            return output
+        cf=combifiledict.get(P)
+        if not cf:
+            continue
+        cf.save(read=True)
 
         root=tk.Tk()
         instruction=("Created:\n\n"
@@ -1371,7 +1422,7 @@ def main_combine():
                      "Would you like to create all visualizations\n"
                      "or create only a combined tab file\n"
                      "or move on to create the next CombiFile?"
-                     .format(CF))
+                     .format(cf))
         OB6=OptionBox(root,
                       title="PHENOS",
                       instruct=instruction,
@@ -1387,54 +1438,205 @@ def main_combine():
         if not OPT:
             return output
         elif OPT=="Create visualizations":
-            LOG.info("Illustrating {}".format(CF))
-            CF.output_to_txt()
-            CF.illustrate()
+            LOG.info("Illustrating {}".format(cf))
+            cf.output_to_txt()
+            cf.illustrate()
         elif OPT=="Combined data file only":
-            CF.output_to_txt(replace=True)
-            CF.open_plots_folder()
-        output[P]=CF
+            cf.output_to_txt(replace=True)
+            cf.open_plots_folder()
+        output[P]=cf
+        #if Control then give option to store in Controls folder
+            
         try:
             root.destroy()
         except:
             pass
-
+        if cf.is_control():
+            root=tk.Tk()
+            instruction=("Combined file {} appears to be a control "
+                         "(no treatment) experiment.\n\n"
+                         "Is this a good quality data?\n\nIf so, "
+                         "would you like to copy this to the 'Controls' "
+                         "database where it will available as a control "
+                         "to all users?"
+                         .format(cf.value))
+            OB7=OptionBox(root,
+                          title="PHENOS",
+                          instruct=instruction,
+                          options=["Yes",
+                                   "No"],
+                          default="Yes")
+            root.focus_force()
+            root.geometry('{}x{}+{}+{}'.format(1100,800,100,100))
+            root.mainloop()
+            counter=0
+            OPT=OB7.value
+            if OPT=="Yes":
+                copydatato(cf.value,targetfolder="Controls",
+                           datafiles='shortcut',
+                           plotfiles='shortcut',
+                           dbaseobs='copy')
+        else:
+            root=tk.Tk()
+            instruction=("Combined file {} has been entered.\n\n"
+                         "Is this a good quality data?\n\nIf so, "
+                         "would you like to copy this to the 'All' "
+                         "database where it can be compared with "
+                         "experiments by other users?"
+                         .format(cf.value))
+            OB7=OptionBox(root,
+                          title="PHENOS",
+                          instruct=instruction,
+                          options=["Yes",
+                                   "No"],
+                          default="Yes")
+            root.focus_force()
+            root.geometry('{}x{}+{}+{}'.format(1100,800,100,100))
+            root.mainloop()
+            counter=0
+            OPT=OB7.value
+            if OPT=="Yes":
+                copydatato(cf.value,
+                           targetfolder="All",
+                           datafiles='shortcut',
+                           plotfiles='shortcut',
+                           dbaseobs='copy')
     return output
 #
-def choose_controlledexperiment(MAINDICT):
-    pass
-    
-def delete_controlledexperiment(controlledexperiment,checkboxes=True):
-    if not controlledexperiment:
+
+def delete_files(files,checkboxes=True):
+    if type(files)!=list:
+        LOG.critical("Should be passed list")
+        sys.exit()
+    if not files or files==[None]:
         return None
-    if type(controlledexperiment) in [str,unicode]:
-        controlledexperiment=ControlledExperiments()[controlledexperiment]
+    for f in files:
+        if type(f) in [str,unicode]:
+            f=Files()[f]
 
-    CE=controlledexperiment
-    LOG.info("Deleting ControlledExperiment {}".format(str(CE)))
+        LOG.info("Deleting File {} from {}".format(str(f),
+                                                   f.dbasenameroot))
 
-    if not checkboxes:
-         CE.delete()
-         return True
-    else:
-        root=tk.Tk()
-        instruction=("ARE YOU SURE YOU WANT TO DELETE\n\n"
-                     "ControlledExperiment({})\t\n\n"
-                     "and\t{} ControlledReadings in {}?"
-                     .format(CE.value,
-                             CE["ncurves"].value,
-                             LOCS.currentuserfolder))
-        OB4=OptionBox(root,
-                      title="PHENOS",
-                      instruct=instruction)
-        root.focus_force()
-        root.geometry('{}x{}+{}+{}'.format(1100,800,100,100))
-        root.mainloop()
-        GOAHEAD=OB4.value
+        if not checkboxes:
+            GOAHEAD="Yes"
+        else:
+            root=tk.Tk()
+            instruction=("ARE YOU SURE YOU WANT TO DELETE\n\n"
+                         "File ({})\t\n\n"
+                         "and\t{} Readings in {}?"
+                         .format(f.value,
+                                 f["ncurves"].value,
+                                 LOCS.currentuserfolder))
+            OB4=OptionBox(root,
+                          title="PHENOS",
+                          instruct=instruction)
+            root.focus_force()
+            root.geometry('{}x{}+{}+{}'.format(1100,800,100,100))
+            root.mainloop()
+            GOAHEAD=OB4.value
         if GOAHEAD=="Yes":
-            CE.delete()
-            return True
-        return False
+            f.delete()
+            #Also, delete any CombiFile derived from it
+            CF=CombiFiles()
+            cfa=CF.query_by_kwargs(combifileid=f.value)
+            delete_combifiles(cfa,checkboxes=False)
+            #Also delete from Controls or All
+            fa=Files("All").query_by_kwargs(fileid=f.value)
+            delete_files(fa,checkboxes=False)
+            fc=Files("Controls").query_by_kwargs(fileid=f.value)
+            delete_files(fc,checkboxes=False)
+    return True
+
+def delete_combifiles(combifiles,checkboxes=True,delete_files_too=False):
+    if type(combifiles)!=list:
+        LOG.critical("Should be passed list")
+        sys.exit()
+    if not combifiles or combifiles==[None]:
+        return None
+    for cf in combifiles:
+        if type(cf) in [str,unicode]:
+            cf=CombiFiles()[cf]
+
+        LOG.info("Deleting Combined file {} from {}".format(str(cf),
+                                                            cf.dbasenameroot))
+
+        if delete_files_too:
+            delete_files(list(cf.yield_sourcefiles()),checkboxes=checkboxes)
+
+        if not checkboxes:
+            GOAHEAD="Yes"
+        else:
+            root=tk.Tk()
+            instruction=("ARE YOU SURE YOU WANT TO DELETE\n\n"
+                         "Combined file ({})\t\n\n"
+                         "and\t{} CombiReadings in {}?\n\n"
+                         "This will also delete any controlled "
+                         "experiments based on this combined file"
+                         .format(cf.value,
+                                 cf["ncurves"].value,
+                                 LOCS.currentuserfolder))
+            OB4=OptionBox(root,
+                          title="PHENOS",
+                          instruct=instruction)
+            root.focus_force()
+            root.geometry('{}x{}+{}+{}'.format(1100,800,100,100))
+            root.mainloop()
+            GOAHEAD=OB4.value
+        if GOAHEAD=="Yes":
+            cf.delete()
+            #Also delete any ControlledExperiments derived from it
+            CE=ControlledExperiments()
+            cea=CE.query_by_kwargs(combifile=cf.value)
+            delete_controlledexperiments(cea,checkboxes=False)
+            #And any experiments that use this as a control...
+            ceac=CE.query_by_kwargs(controlfileid=cf.value)
+            delete_controlledexperiments(ceac,checkboxes=False)
+            #Also delete from Controls or All
+            cfa=CombiFiles("All").query_by_kwargs(combifileid=cf.value)
+            delete_combifiles(cfa,checkboxes=False,delete_files_too=True)
+            cfc=CombiFiles("Controls").query_by_kwargs(combifileid=cf.value)
+            delete_combifiles(cfc,checkboxes=False,delete_files_too=True)
+    return True
+
+def delete_controlledexperiments(controlledexperiments,checkboxes=True):
+    if type(controlledexperiments)!=list:
+        LOG.critical("Should be passed list")
+        sys.exit()
+    if not controlledexperiments or controlledexperiments==[None]:
+        return None
+    for ce in controlledexperiments:
+        if not ce:
+            return None
+        if type(ce) in [str,unicode]:
+            ce=ControlledExperiments()[ce]
+
+        LOG.info("Deleting ControlledExperiment {}".format(str(ce)))
+
+        if not checkboxes:
+            GOAHEAD="Yes"
+        else:
+            root=tk.Tk()
+            instruction=("ARE YOU SURE YOU WANT TO DELETE\n\n"
+                         "ControlledExperiment({})\t\n\n"
+                         "and\t{} ControlledReadings in {}?"
+                         .format(ce.value,
+                                 ce["ncurves"].value,
+                                 LOCS.currentuserfolder))
+            OB4=OptionBox(root,
+                          title="PHENOS",
+                          instruct=instruction)
+            root.focus_force()
+            root.geometry('{}x{}+{}+{}'.format(1100,800,100,100))
+            root.mainloop()
+            GOAHEAD=OB4.value
+        if GOAHEAD=="Yes":
+            ce.delete()
+            #Also delete from Controls or All
+            cea=ControlledExperiments("All").query_by_kwargs(controlledexperimentid=ce.value)
+            delete_controlledexperiments(cea,checkboxes=False)
+            cec=ControlledExperiments("Controls").query_by_kwargs(controlledexperimentid=ce.value)
+            delete_controlledexperiments(cec,checkboxes=False)
+    return True
 
 def main_rqtl():
     CE=ControlledExperiments()
@@ -1442,8 +1644,6 @@ def main_rqtl():
     UncontrolledExs=[CF for CF in CombiFiles()
                      if CF.value
                      not in CE.get_values_of_atom("combifile")]
-    if not UncontrolledExs:
-        return False
 
 #    genotypelookup=Strains().get_genotype_dict()
 #    LOG.info("Got genotypelookup")
@@ -1456,23 +1656,33 @@ def main_rqtl():
         ST=combifile.timevalues()
         if not ST:
             LOG.error("no timevalues found for Combifile "+str(combifile))
-            return None
+            return None,None
         CT=controlcombifile.timevalues()
         if not CT:
             LOG.error("no timevalues found for ControlCombifile "+str(controlcombifile))
-            return None
+            return None,None
         minmax=min(max(ST),max(CT))
         nearest1=ST[closest_index(ST,minmax)]
         nearest2=CT[closest_index(CT,minmax)]
         middle=(nearest1+nearest2)/2.0
-        return middle-plusminus
+        return middle-plusminus,{"timefocus":middle-plusminus,
+                                 "plusminus":plusminus,
+                                 "cf_timevalues":ST,
+                                 "cn_timevalues":CT}
+
+    def timepoints_in_window(timepoints,timefocus,plusminus):
+        return [t for t in timepoints
+                if (timefocus-plusminus)<=t<=(timefocus+plusminus)]
+
+    def timepoints_to_string(timepoints):
+        return ",".join(["{:.1f}".format(t) for t in timepoints])
 
     def get_CFID(comfil,confil):
         return "{}_{}".format(comfil,confil)
 
     def get_TFPM(timfoc,plsmin):
             if timfoc:
-                return "{:.1f}hrs+-{}".format(timfoc,plsmin)
+                return "{:.1f}hrs+-{:.1f}".format(timfoc,plsmin)
             else:
                 return ""
 
@@ -1482,43 +1692,74 @@ def main_rqtl():
         else:
             return "no"
 
-    for cf in UncontrolledExs:
-        for cn in CE.find_combifile_controls(cf,report=True) or []:
-            TF=pick_timefocus(cf,cn)
-            timefocusdict[cf.value]=TF
-            LST.append((get_CFID(cf.value,cn.value),
-                        cf["treatment"].value,
-                        cf["platelayout"].value,
-                        cf.value,
-                        cn.value,
-                        get_TFPM(TF,PM),
-                        cf["ncurves"].value,
-                        get_ISGEN(cf),
-                        "no"))
-    LST2=[]
-    for ce in CE:
-        TF,PM=ce["timefocus"].value,ce["plusminus"].value
-        LST2.append((ce.value,
-                     ce["treatment"].value,
-                     ce["platelayout"].value,
-                     ce["combifile"].value,
-                     ce["controlfileid"].value,
-                     get_TFPM(TF,PM),
-                     ce["ncurves"].value,
-                     get_ISGEN(ce),
-                     "YES"))
-
     headers=["Controlled Experiment ID",
              "Treatment","Plate layout",
              "Combined file","Control file",
              "Time crossover","Array size",
              "Is Genotyped?","Already exists?"]
-    
+    lookup={}
+    #New...
+    for cf in UncontrolledExs:
+        for cn in cf.return_scored_controls() or []:
+            TF,TD=pick_timefocus(cf,cn)
+            if TF is None:
+                continue
+            CFID=get_CFID(cf.value,cn.value)
+            L=(CFID,
+               cf["treatment"].value,
+               cf["platelayout"].value,
+               cf.value,
+               cn.value,
+               get_TFPM(TF,PM),
+               cf["ncurves"].value,
+               get_ISGEN(cf),
+               "no")
+            TD.update(dict(zip(headers,L)))
+            TD.update({"cf":cf,
+                       "controlcf":cn})
+            lookup[CFID]=TD
+            timefocusdict[cf.value]=TF
+            LST.append(L)
+    #Already created...
+    LST2=[]
+    for ce in CE:
+        TF=ce["timefocus"].value
+        PM2=ce["plusminus"].value
+        cf=ce.get_source_combifile()
+        cn=ce.get_control_combifile()
+        TD={"ce":ce,
+            "timefocus":TF,
+            "plusminus":PM2,
+            "cf":cf,
+            "cf_timevalues":cf.timevalues(),
+            "controlcf":cn,
+            "cn_timevalues":cn.timevalues()}
+        L=(ce.value,
+           ce["treatment"].value,
+           ce["platelayout"].value,
+           ce["combifile"].value,
+           ce["controlfileid"].value,
+           get_TFPM(TF,PM2),
+           ce["ncurves"].value,
+           get_ISGEN(ce),
+           "YES")
+        TD.update(dict(zip(headers,L)))
+        lookup[ce.value]=TD
+        LST2.append(L)
+    LST2.reverse()
+
     root=tk.Tk()
     TIT="PHENOS"
-    instruction=("Select new controlled experiment(s) to create and visualize\n"
-                 "Or previous controlled experiment(s) to view.\n"
+    instruction=("Select new controlled experiment(s) to create and "
+                 "visualize\n Or previous controlled experiment(s) "
+                 "to view.\n\n"
                  "<Delete> to remove or <Escape> to quit.\n\n"
+                 "The time window (within which readings are "
+                 "included and averaged) has been selected automatically. "
+                 "However if you would like to change it, select and "
+                 "hit <Insert> (N.B.: if this is an "
+                 "existing controlled experiment, the earlier entry "
+                 "will be replaced with the new one).\n\n"
                  "Please wait for completion.")
     if LST and LST2:
         JOINEDLST=LST+[tuple([""]*len(headers))]+LST2
@@ -1531,8 +1772,11 @@ def main_rqtl():
     else:
         default=None
     
-    lookup={t[0]:dict(zip(headers,t)) for t in JOINEDLST if t[0]}
-    
+    to_alter=[]
+    def alter_timefocus(selections):
+        for s in selections:
+            to_alter.append(s)
+
     LB8=MultiColumnListbox(root,
                            title=TIT,
                            instruct=instruction,
@@ -1540,32 +1784,131 @@ def main_rqtl():
                            lists=JOINEDLST,
                            default=default,
                            selectmode="extended",
-                           delete_function=delete_controlledexperiment)
+                           delete_fn=delete_controlledexperiments,
+                           insert_fn=alter_timefocus)
     root.focus_force()
     root.geometry('{}x{}+{}+{}'.format(1100,800,100,100))
     root.mainloop()
     PICK=LB8.values
-    if PICK==None:
-        main_rqtl()
-        return
-    if type(PICK)!=list:
-        PICK=[PICK]
+    #if type(PICK)!=list:
+    #    PICK=[PICK]
+
+    PICK2=[]
+    if PICK[0]==None:
+        for a in to_alter:
+            TD=lookup[a]
+            if TD["Already exists?"]=='YES':
+                extrainstruction=("\n\nThis will replace the existing "
+                                  "controlled experiment {}\n\n".format(a))
+            else:
+                extrainstruction=""
+            instruction=("{}({}) has timepoints {}\n\n"
+                         "{}(Control) has timepoints {}\n\n"
+                         "Enter the time in hours at which the time window "
+                         "is centred (the time focus): all time "
+                         "points within this window (or equal to the "
+                         "edges of it) are included and averaged together.\n"
+                         "Optionally: add '+-' and a second number for the "
+                         "width of the time window if you wish to change "
+                         "this from the default (0.5 hours){}"
+                         .format(TD["cf"].value,
+                                 TD["cf"]["treatment"].value,
+                                 timepoints_to_string(TD["cf_timevalues"]),
+                                 TD["controlcf"].value,
+                                 timepoints_to_string(TD["cn_timevalues"]),
+                                 extrainstruction))
+
+            while True:
+                root=tk.Tk()
+                EB3=EntryBox(root,title="PHENOS",instruct=instruction)
+                root.focus_force()
+                root.geometry('{}x{}+{}+{}'.format(1100,800,100,100))
+                root.mainloop()
+                TIMEFOCUS=EB3.value
+                if TIMEFOCUS is None:
+                    continue
+                PLUSMINUS=0.5
+                if "+-" in TIMEFOCUS:
+                    TIMEFOCUS,PLUSMINUS=TIMEFOCUS.split("+-")
+                try:
+                    TIMEFOCUS=float(TIMEFOCUS)
+                    PLUSMINUS=float(PLUSMINUS)
+                except:
+                    continue
+                tfpm=get_TFPM(TIMEFOCUS,PLUSMINUS)
+                LOG.info("Picked timefocus {} for {}"
+                         .format(tfpm,a))
+                STPs=timepoints_in_window(TD["cf_timevalues"],
+                                          TIMEFOCUS,PLUSMINUS)
+                CTPs=timepoints_in_window(TD["cn_timevalues"],
+                                          TIMEFOCUS,PLUSMINUS)
+                if not STPs or not CTPs:
+                    instruction=("No timepoints in window {}. "
+                                 "Try again. \n\n".format(tfpm)
+                                 +instruction)
+                    continue
+                instruction2=("Treatment file {} timepoints {}\nwill be "
+                              "averaged and compared to\n"
+                              "Control file {} timepoints {}.\n\n{}"
+                              "Are you happy to proceed with this?"
+                              .format(TD["cf"].value,
+                                      timepoints_to_string(STPs),
+                                      TD["controlcf"].value,
+                                      timepoints_to_string(CTPs),
+                                      extrainstruction))
+                root=tk.Tk()
+                OB8=OptionBox(root,
+                              title="PHENOS",
+                              instruct=instruction2,
+                              options=["Yes",
+                                       "No"],
+                              default="Yes")
+                root.focus_force()
+                root.geometry('{}x{}+{}+{}'.format(1100,800,100,100))
+                root.mainloop()
+                counter=0
+                OPT=OB8.value
+                if OPT is None:
+                    break
+                if OPT=="No":
+                    continue
+                if OPT=="Yes":
+                    lookup[a]["timefocus"]=TIMEFOCUS
+                    lookup[a]["plusminus"]=PLUSMINUS
+                    lookup[a]['Time crossover']=get_TFPM(TIMEFOCUS,PLUSMINUS)
+                    if lookup[a]["Already exists?"]=="YES":
+                        lookup[a]["Already exists?"]="no"
+                        ce=lookup[a]["ce"]
+                        LOG.info("Deleting {}".format(ce))
+                        ce.delete()
+                    PICK2.append(a)
+                    break
+        PICK=PICK2
+
     output={}
+    
+    showdraw=False if len(PICK)>1 else True
     for P in PICK:
         if lookup[P]["Already exists?"]=="YES":
-            Cex=CE[P]
-            drawn=Cex.draw_ratios(show=True)
-            print "Create ControlledExperiment {} again?".format(P)
+            cf=lookup[P]['cf']
+            drawn=cf.draw_ratios(show=True)
         else:
-            CF=CombiFiles()[lookup[P]["Combined file"]]
-            CN=CombiFiles("Controls")[lookup[P]["Control file"]]
-            Cex=ControlledExperiment.create_from_combifiles(CF,CN,
+            cf=lookup[P]["cf"]
+            cn=lookup[P]["controlcf"]
+            Cex=ControlledExperiment.create_from_combifiles(cf,cn,
                                                             rounder="{:.4f}",
+                                                            timefocus=lookup[P]["timefocus"],
+                                                            plusminus=lookup[P]["plusminus"],
                                                             read=True,
                                                             store=True,
                                                             report=True)
-            drawn=Cex.draw_ratios(show=True)
-            
+            drawn=Cex.draw_ratios(show=showdraw)
+            try:
+                Cex.output_to_rQTL()
+            except Exception as e:
+                LOG.error("Unable to output_to_rqtl {} because {} {}"
+                          .format(Cex.value,e,get_traceback()))
+
 
     return True
 
@@ -1594,7 +1937,7 @@ def main():
             return
         if main_combine() is False:
             root=tk.Tk()
-            instruction=("There are no files in {} which can be combined"
+            instruction=("There are no new files in {} which can be combined"
                          .format(Locations().get_userpath()))
             OB8=OptionBox(root,
                           title="PHENOS",
@@ -1610,7 +1953,7 @@ def main():
     elif OPT=="Generate rQTL input for combined files":
         if main_rqtl() is False:
             root=tk.Tk()
-            instruction=("There are no combined files in {}"
+            instruction=("There are no new combined files in {}"
                          " for which rQTL input can be created"
                          .format(Locations().get_userpath()))
             OB9=OptionBox(root,
