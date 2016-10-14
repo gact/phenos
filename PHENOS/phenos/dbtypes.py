@@ -192,8 +192,10 @@ def copydatato(experimentid,targetfolder=None,
         elif datafiles=='shortcut':
             FN=os.path.basename(targetfilepath)
             shortcutname="~{}.lnk".format(os.path.splitext(FN)[0])
-            create_Windows_shortcut(os.path.basename(targetfilepath),
-                                    shortcutname,report=report)
+            shortcutpath=os.path.join(datatargetfolder,shortcutname)
+            create_Windows_shortcut(targetfilepath,
+                                    shortcutpath,
+                                    report=report)
 
         newfilestostore.append(FL2)
         newreadingstostore+=[c.copy_in_other_folder(targetfolder)
@@ -207,18 +209,24 @@ def copydatato(experimentid,targetfolder=None,
         copy_contents_to(plotssourcefolder,plotstargetfolder,report=report,
                          ignore=[".lnk"])
         #Recreate datafiles>plots shortcut
-        shortcutname=os.path.join(plotstargetfolder,
+        shortcutpath=os.path.join(plotstargetfolder,
                                   "~{}.lnk".format(targetfolder))
-        create_Windows_shortcut(datatargetfolder,shortcutname,report=report)
+        create_Windows_shortcut(datatargetfolder,
+                                shortcutpath,
+                                report=report)
 
         #Recreate plots>datafiles shortcut
-        shortcutname=os.path.join(datatargetfolder,
+        shortcutpath=os.path.join(datatargetfolder,
                                   "~{}.lnk".format(subfoldername))
-        create_Windows_shortcut(plotstargetfolder,shortcutname,report=report)
+        create_Windows_shortcut(plotstargetfolder,
+                                shortcutpath,
+                                report=report)
     elif plotfiles=='shortcut':
-        shortcutname=os.path.join(datatargetfolder,
+        shortcutpath=os.path.join(datatargetfolder,
                                   "~{}.lnk".format(os.path.split(plotssourcefolder)[-1]))
-        create_Windows_shortcut(plotssourcefolder,shortcutname,report=report)
+        create_Windows_shortcut(plotssourcefolder,
+                                shortcutpath,
+                                report=report)
 
     #Copy CF, File and readings to new db
     if dbaseobs=='copy':
@@ -333,11 +341,25 @@ class Locations(object):
         return Locations.userfolders
 
     def get_dbase(self,userfolder=None,reload=False):
+        if userfolder==shareddbasenameroot:
+            if reload or not Locations.shareddbase:
+                filepath=os.path.join(Locations.rootdirectory,
+                                      "_{}.h5".format(userfolder))
+                Locations.shareddbase=DBase(filepath)
+            return Locations.shareddbase
+        
         if userfolder is None:
             userfolder=Locations.currentuserfolder
+        
+        if userfolder not in Locations.userfolders:
+            LOG.error("Can't find user folder '{}' so creating it"
+                      .format(userfolder))
+            self.set_userfolder(userfolder,create=True)
+        
         if reload:
             if userfolder in Locations.userdbases:
                 del Locations.userdbases[userfolder]
+        
         if userfolder not in Locations.userdbases:
             if userfolder==shareddbasenameroot:
                 DIR=Locations.rootdirectory
@@ -345,8 +367,6 @@ class Locations(object):
                 DIR=os.path.join(self["datafiles"],userfolder)
             pth=os.path.join(DIR,"_{}.h5".format(userfolder))
             Locations.userdbases[userfolder]=DBase(pth)
-            if userfolder==shareddbasenameroot:
-                Locations.shareddbase=Locations.userdbases[userfolder]
         return Locations.userdbases[userfolder]
 
     def get_plotspath(self):
@@ -365,7 +385,7 @@ class Locations(object):
                         .format(time.strftime("%y%m%d%H%M%S")))
         return pp
 
-    def get_last_log(self,openfolder=True):
+    def get_last_log(self,openfolder=False):
         logfolder=self["logs"]
         if openfolder:
             open_on_Windows(logfolder)
@@ -422,7 +442,7 @@ class Locations(object):
                 self.add_new_userfolder(userfolder,setfolder=False)
             else:
                 previoususerfolder=userfolder
-                userfolder="Software Test"
+                userfolder="Test"
                 LOG.error("Can't find userfolder {} "
                           "so setting to Software Test"
                           .format(previoususerfolder,userfolder))
@@ -2360,10 +2380,10 @@ class rQTLinputReader(GenotypeData):
             "strain",
             "genotyperow"
         """
-        phenotypeheaders=shareddata["phenotypeheaders"]
-        markernames=shareddata["markernames"]
-        chromosomes=shareddata["chromosomes"]
-        geneticpositions=shareddata["geneticpositions"]
+        phenotypeheaders=shareddata.get("phenotypeheaders",[])
+        markernames=shareddata.get("markernames",[])
+        chromosomes=shareddata.get("chromosomes",[])
+        geneticpositions=shareddata.get("geneticpositions",[])
         #
         with open(filepath,"wb") as fileob:
             writer=csv.writer(fileob,delimiter=',',quoting=csv.QUOTE_MINIMAL)
@@ -2375,7 +2395,7 @@ class rQTLinputReader(GenotypeData):
             writer.writerow(row2)
             writer.writerow(row3)
             for row in rowdata:
-                newrow=list(row["phenotyperow"])+list([row["strain"]])+list(row["genotyperow"])
+                newrow=list(row["phenotyperow"])+list([row["strain"]])+list(row.get("genotyperow",[]))
                 writer.writerow(newrow)
             fileob.close()
             LOG.info("rQTLinputReader created {}"
@@ -2400,10 +2420,11 @@ class rQTLinputReader(GenotypeData):
                 return False
             CF=ob["combifile"]
             SFN=CF.get_subfoldername()
+            LOG.debug("got subfolder {}".format(SFN))
             if not ob["timespan"].is_sufficient(fortext="output_to_rQTL"):
                 return False
             if not args:
-                if "MMS" in ob["treatment"].value:
+                if "MMS" in ob["treatment"].value or kwargs.get("Differential",False):
                     if T in ["ControlledExperiment"]:
                         args=[TreatmentRatioCalc,DifferentialTimeCalc,AverageWithoutAgarAtTimeCalc]
                     else:
@@ -2429,109 +2450,126 @@ class rQTLinputReader(GenotypeData):
         for rqtlgroup,recs in split_records_by_rQTLgroup(ob).items():
             if rqtlgroup:
                 recs=screen_records(recs,**kwargs)
-                if T in ["ControlledExperiment","CombiFile"]:
-                    if not recs:
-                        LOG.error("no valid recs after screening for "
-                                  "ControlledExperiment {} rqtlgroup {}"
-                                  .format(ob.value,rqtlgroup))
-                        continue
-                    kw2=kwargs.copy()
-                    kw2.setdefault("prefix","rQTL")
-                    kw2.setdefault("suffix","{} {}".format(headertag,rqtlgroup))
-                    kw2.setdefault("extension","csv")
-                    filepath=ob.get_graphicspath(experimentfolder=SFN,
-                                                 **kw2)
-                    PF="{plotfolder}/{userfolder}/{prefix}{graphicsnameroot}{suffix}.{extension}"
-                    copyto=ob.get_graphicspath(pathformatter=PF,
-                                               plotfolder=Locations()["rqtlinput"],
-                                               **kw2)
-                if T in ["CombiReadings"]:
-                    if not recs:
-                        LOG.error("no valid recs after screening for "
-                                  "CombiReadings rqtlgroup {}"
-                                  .format(rqtlgroup))
-                        continue
-                    UD=os.path.split(Locations().get_userpath())[-1]
-                    filename=("rQTL CombiReadings {} {}.csv"
-                              .format(UD,rqtlgroup))
-                    filepath=os.path.join(Locations().get_plotspath(),
-                                          filename)
-                    copyto=os.path.join(Locations()["rqtl input"],
-                                        filename)
-                rowdata=[]
-                shareddata={}
-                allalleles=[]
-                for r in recs:
-                    AL=r.alleles()
-                    if AL is False:
-                        LOG.error("no alleles found for ControlledReading {} so "
-                                  "not continuing with rqtlgroup {}"
-                                  .format(r.value,rqtlgroup))
-                        continue
+            if T in ["ControlledExperiment","CombiFile"]:
+                if not recs:
+                    LOG.error("no valid recs after screening for "
+                              "ControlledExperiment {} rqtlgroup {}"
+                              .format(ob.value,rqtlgroup))
+                    continue
+            kw2=kwargs.copy()
+            kw2.setdefault("prefix","rQTL")
+            kw2.setdefault("suffix","{} {}".format(headertag,rqtlgroup))
+            kw2.setdefault("extension","csv")
+            filepath=ob.get_graphicspath(experimentfolder=SFN,
+                                         **kw2)
+            PF="{plotfolder}/{userfolder}/{prefix}{graphicsnameroot}{suffix}.{extension}"
+            copyto=ob.get_graphicspath(pathformatter=PF,
+                                       plotfolder=Locations()["rqtlinput"],
+                                       **kw2)
+            if T in ["CombiReadings"]:
+                if not recs:
+                    LOG.error("no valid recs after screening for "
+                              "CombiReadings rqtlgroup {}"
+                              .format(rqtlgroup))
+                    continue
+                UD=os.path.split(Locations().get_userpath())[-1]
+                filename=("rQTL CombiReadings {} {}.csv"
+                          .format(UD,rqtlgroup))
+                filepath=os.path.join(Locations().get_plotspath(),
+                                      filename)
+                copyto=os.path.join(Locations()["rqtl input"],
+                                    filename)
+            #Prepare data
+            rowdata=[]
+            shareddata={}
+            allalleles=[]
+            for r in recs:
+                AL=r.alleles()
+                if AL is False:
+                    AL=[]
+                else:
                     allalleles.append(AL)
-                if allalleles:
-                    mask=get_allnone_mask(allalleles)
-                    maskedalleles=[mask_by_index(AL,mask) for AL in allalleles]
-                    maskedMN=mask_by_index(recs[0].markers()["markernames"],
-                                           mask)
-                    maskedCH=mask_by_index(recs[0].markers()["chromosomes"],
-                                           mask)
-                    maskedGP=mask_by_index(recs[0].markers()["geneticpositions"],
-                                           mask)
+            maskedMN,maskedCH,maskedGP=[],[],[]
+            if allalleles:
+                mask=get_allnone_mask(allalleles)
+                maskedalleles=[mask_by_index(AL,mask) for AL in allalleles]
+                maskedMN=mask_by_index(recs[0].markers()["markernames"],
+                                       mask)
+                maskedCH=mask_by_index(recs[0].markers()["chromosomes"],
+                                       mask)
+                maskedGP=mask_by_index(recs[0].markers()["geneticpositions"],
+                                       mask)
 
-                    """
-                    shareddata must be dict containing these headers:
-                        "markernames",
-                        "phenotypeheaders"
-                    and optionally (otherwise deduced from markernames):
-                        "chromosomes",
-                        "geneticpositions"
-                    rowdata must be a list of dictionaries, each with the headers:
-                        "phenotyperow"
-                        "strain",
-                        "genotyperow"
-                    """
-                    headers=flatten([pc.get_header_list() for pc
-                                     in phenotypecalculators])
-                    shareddata={"markernames":maskedMN,
-                                "chromosomes":maskedCH,
-                                "geneticpositions":maskedGP,
-                                "phenotypeheaders":headers}
-                    rowdata=[]
-                    for rec,ma in zip(recs,maskedalleles):
-                        goahead=True
-                        PL=[]
-                        for pc in phenotypecalculators:
-                            try:
-                                PL.append(pc.get_phenotype_list(rec))
-                            except Exception as e:
-                                LOG.error("problem with get_phenotype_list for phenotypecalculator {} "
-                                          "for record {} so abandoning creation of {}, because {} {}"
-                                          .format(pc.__class__.__name__,rec.value,filepath,e,get_traceback()))
-                                global SAVEIT
-                                SAVEIT=rec
-                                goahead=False
-                        PR=flatten(PL)
-                        rowdata.append({"phenotyperow":PR,
-                                        "strain":rec["strain"].value,
-                                        "genotyperow":ma})
-
-                    if goahead:
-                        rowdata2=sorted(rowdata,key=lambda k:k["strain"])
+                """
+                shareddata must be dict containing these headers:
+                    "markernames",
+                    "phenotypeheaders"
+                and optionally (otherwise deduced from markernames):
+                    "chromosomes",
+                    "geneticpositions"
+                rowdata must be a list of dictionaries, each with the headers:
+                    "phenotyperow"
+                    "strain",
+                    "genotyperow"
+                """
+            headers=flatten([pc.get_header_list() for pc
+                             in phenotypecalculators])
+            shareddata={"markernames":maskedMN,
+                        "chromosomes":maskedCH,
+                        "geneticpositions":maskedGP,
+                        "phenotypeheaders":headers}
+            
+            rowdata=[]
+            if allalleles:
+                for rec,ma in zip(recs,maskedalleles):
+                    goahead=True
+                    PL=[]
+                    for pc in phenotypecalculators:
                         try:
-                            cls.create(shareddata,rowdata2,filepath)
-                            #LOG.info("created rQTLinput {}".format(filepath))
-                            filepaths.append(filepath)
-                            try:
-                                copy_to(filepath,copyto)
-                                LOG.info("created copy of rQTLinput {}"
-                                         .format(copyto))
-                            except Exception as e:
-                                LOG.error("couldn't copy rQTLinput {} because {}"
-                                          .format(copyto,e))
+                            PL.append(pc.get_phenotype_list(rec))
                         except Exception as e:
-                            LOG.error("couldn't create rQTLinput {} because {}"
-                                      .format(filepath,e))
+                            LOG.error("problem with get_phenotype_list for phenotypecalculator {} "
+                                      "for record {} so abandoning creation of {}, because {} {}"
+                                      .format(pc.__class__.__name__,rec.value,filepath,e,get_traceback()))
+                            goahead=False
+                    PR=flatten(PL)
+                    
+                    rowdata.append({"phenotyperow":PR,
+                                    "strain":rec["strain"].value,
+                                    "genotyperow":ma})
+            else:
+                for rec in recs:
+                    goahead=True
+                    PL=[]
+                    for pc in phenotypecalculators:
+                        try:
+                            PL.append(pc.get_phenotype_list(rec))
+                        except Exception as e:
+                            LOG.error("problem with get_phenotype_list for phenotypecalculator {} "
+                                      "for record {} so abandoning creation of {}, because {} {}"
+                                      .format(pc.__class__.__name__,rec.value,filepath,e,get_traceback()))
+                            goahead=False
+                    PR=flatten(PL)
+                    
+                    rowdata.append({"phenotyperow":PR,
+                                    "strain":rec["strain"].value})
+
+            if goahead:
+                rowdata2=sorted(rowdata,key=lambda k:k["strain"])
+                try:
+                    cls.create(shareddata,rowdata2,filepath)
+                    #LOG.info("created rQTLinput {}".format(filepath))
+                    filepaths.append(filepath)
+                    try:
+                        copy_to(filepath,copyto)
+                        LOG.info("created copy of rQTLinput {}"
+                                 .format(copyto))
+                    except Exception as e:
+                        LOG.error("couldn't copy rQTLinput {} because {} {}"
+                                  .format(copyto,e,get_traceback()))
+                except Exception as e:
+                    LOG.error("couldn't create rQTLinput {} because {} {}"
+                              .format(filepath,e,get_traceback()))
         return filepaths
 #
 class rQTLoutputdigestReader(_XlsxReader):
@@ -2849,15 +2887,13 @@ class DBase(object):
     table=None
     autobackup=False
 
-    def __init__(self,filepath=None):
+    def __init__(self,filepath):
         LOG.debug("instantiating new DBase object connected to {}"
                   .format(filepath))
-        if filepath is None:
-            filepath=Locations().currentdbasepath
-
         if not os.path.exists(filepath):
             LOG.info("will create new DBase file {}"
                      .format(filepath))
+            prepare_path(os.path.dirname(filepath))
             populate_test_table=True
         
         self.filepath=filepath
@@ -4012,13 +4048,16 @@ class DBRecord(DBAtom):
         Value can be a value, or a whole DBAtom subclass
         """
         atomnames,atomclasses=zip(*self.atoms)
-        try:
+        #try:
+        for a in "a":
             i=atomnames.index(name)
-        except:
-            LOG.error("{} can't find atom {} to set it to {}({})"
-                      .format(self.__class__.__name__,
-                              name,type(value),value))
-            return None
+        #except Exception as e:
+        #    LOG.error("{} can't find atom {} to set it to {}({}) "
+        #              "because {} {}"
+        #              .format(self.__class__.__name__,
+        #                      name,type(value),value,
+        #                      e,get_traceback()))
+        #    return None
         if type(atomclasses[i])==type(value):
             self.atoms[i][1]=value
         else:
@@ -4042,7 +4081,7 @@ class DBRecord(DBAtom):
 
     def scrutinize(self,printit=True):
         output=["{} ({})".format(self.value,self.dbasenameroot)+"_"*30]
-        output+=["{}\t{}".format(an.ljust(22),av)
+        output+=["{}\t{}".format(an.ljust(22),str(av))
                  for an,av in self.atoms]
         outputstring=os.linesep.join(output)
         if printit:
@@ -4057,6 +4096,8 @@ class DBRecord(DBAtom):
         >>> print r1==r2
         True
         """
+        if other in [None,[],""]:
+            return False
         return self._get_match_condition()==other._get_match_condition()
 
     def __hash__(self):
@@ -4430,6 +4471,9 @@ class DBRecord(DBAtom):
         if hasattr(self,"_delete_also"):
             self._delete_also()
         dbt=self._get_table()
+        if hasattr(dbt,"in_memory_dict"):
+            if self.value in dbt.in_memory_dict:
+                del dbt.in_memory_dict[self.value]
         l=list(dbt._query_index_generator(self._get_match_condition()))
         if not l:
             LOG.warning("{} not found in {} so can't delete"
@@ -4682,8 +4726,7 @@ class DBTable(object):
             if getattr(self.__class__,"_dbasenameroot",None):
                 dbasenameroot=self.__class__._dbasenameroot
             else:
-                CURRENTLOC=Locations().get_userpath()
-                dbasenameroot=os.path.basename(CURRENTLOC)
+                dbasenameroot=Locations.currentuserfolder
         self.__dict__ = self._shared_state.setdefault(dbasenameroot,{})
         self.dbasenameroot=dbasenameroot
         if not hasattr(self,"tablepath"):
@@ -6247,7 +6290,8 @@ class FileLetter(DBString):
 
 class Treatment(DBString):
     coltype=tbs.StringCol(40)
-    controls=["YPD","YPD 30C","COM","COM 30C"]
+    controls=get_config_dict()["controls"]
+
     def calculate(self):
         """
         Treatment atom can be used in Reading records as well as File records,
@@ -7377,6 +7421,10 @@ class CombiFile(DBRecord,GraphicGenerator):
                     allnotes.append(nt)
         return "; ".join(allnotes)[:clip]
 
+    def timestamp(self):
+        return max([cf["experimenttimestamp"].value
+                    for cf in self.yield_sourcefiles()])
+
     def __contains__(self,fileID):
         if type(fileID)==str:
             return fileID in list(self._yield_sourcefileids())
@@ -7402,6 +7450,9 @@ class CombiFile(DBRecord,GraphicGenerator):
             yield sf
 #
     def fix_timeoffsets(self,sourcefiles):
+        """
+        Why did I create this again?
+        """
         if not sourcefiles:
             return sourcefiles
         if sourcefiles[0]["emptyreading"].value:
@@ -7590,26 +7641,7 @@ class CombiFile(DBRecord,GraphicGenerator):
         report: report variance in timepoints, fed to res.timevalues
         return_reverse: if True, & self is_control, returns the non-control matching this control.
         """
-        if usecontrolsdatabase is True:
-            ctable=CombiFiles("Controls")
-        else:
-            ctable=CombiFiles()
-        if self.is_control():
-            if return_reverse:
-                query=CombiFile(platelayout=self["platelayout"],
-                                dbasenameroot=ctable.dbasenameroot)
-                results=ctable.query_by_record_object(query)
-                results=[res for res in results
-                         if res["combifileid"].value!=self["combifileid"].value]
-            else:
-                return False
-        else:
-            results=[]
-            for control in Treatment.controls:
-                query=ctype(platelayout=self["platelayout"],
-                            treatment=control)
-                results+=ctable.query_by_record_object(query)
-
+        results=list(self.yield_controls())
         if check_timepoints is not None:
             results2=[]
             for res in results:
@@ -7863,7 +7895,8 @@ class CombiFile(DBRecord,GraphicGenerator):
                 CD=Locations().get_userpath()
                 CDname=os.path.split(CD)[-1]
                 lnkname=os.path.join(PSFP,"~Data files_"+CDname+".lnk")
-                create_Windows_shortcut(target=CD,location=lnkname)
+                create_Windows_shortcut(targetpath=CD,
+                                        locationpath=lnkname)
             try:
                 pyplt.close('all')
             except Exception as e:
@@ -7938,6 +7971,56 @@ class CombiFile(DBRecord,GraphicGenerator):
         for st in straindict:
             yield (st,zip(self["timevalues"],zip(*straindict[st])))
 
+    def yield_controls(self):
+        if self.is_control():
+            return
+        controlCFs=CombiFiles("Controls")
+        userCFs=CombiFiles(self.dbasenameroot)
+        for control in Treatment.controls:
+            #Gather controls from CombiFiles("Controls")
+            query=CombiFile(platelayout=self["platelayout"],
+                            treatment=control,
+                            dbasenameroot=controlCFs.dbasenameroot)
+            result=controlCFs.query_by_record_object(query)
+            for r in result:
+                yield r
+            foundids=[c.value for c in result]
+            #Add any controls from user CombiFiles() not in above
+            query=CombiFile(platelayout=self["platelayout"],
+                            treatment=control,
+                            dbasenameroot=userCFs.dbasenameroot)
+            result=userCFs.query_by_record_object(query)
+            for r in result:
+                if r.value not in foundids:
+                    yield r
+
+    def return_scored_controls(self,report=True):
+        if self.is_control():
+            return False
+        else:
+            results=self.yield_controls()
+        if not results:
+            return False
+
+        scoredresults=[]
+        for res in results:
+            common_timepoints=self["timeseries"].intersection(res["timeseries"])
+            scoredresults.append((-len(common_timepoints),res))
+        scoredresults.sort()
+        results=[r for s,r in scoredresults]
+        
+        L=len(results)
+        if L==0:
+            idrider="no controls"
+        elif L==1:
+            idrider="1 control: {}".format(results[0]["combifileid"].value)
+        elif L>1:
+            idrider="{} controls".format(L)
+        if report:
+            LOG.info("found {} for {}"
+                     .format(idrider,str(self)))
+        return results
+
     def lock(self):
         self.update_atoms(allprocessed=True)
 
@@ -7946,7 +8029,11 @@ class CombiFile(DBRecord,GraphicGenerator):
 
     def _delete_also(self):
         for f in self.yield_sourcefiles():
-            f.update_atoms(combifile=None)
+            try:
+                f.update_atoms(combifile=None)
+            except Exception as e:
+                LOG.error("Can't delete {} from {} sourcefiles because {} {}"
+                          .format(f,str(self),e,get_traceback()))
 
     def open_plots_folder(self,create_shortcut=True):
         sfname=self.get_subfoldername()
@@ -7954,9 +8041,9 @@ class CombiFile(DBRecord,GraphicGenerator):
                                 sfname)
         open_on_Windows(folderpath)
         if create_shortcut:
-            create_Windows_shortcut(target=folderpath,
-                                    location=os.path.join(Locations().get_userpath(),
-                                                          "~"+sfname+".lnk"))
+            create_Windows_shortcut(targetpath=folderpath,
+                                    locationpath=os.path.join(Locations().get_userpath(),
+                                                              "~"+sfname+".lnk"))
 
 class CombiFiles(DBTable,InMemory):
     _shared_state={}
@@ -8176,15 +8263,21 @@ class ControlledExperiment(CombiFile,GraphicGenerator):
 
     def get_control_combifile(self):
         if not hasattr(self,"control_combifile"):
-            if usecontrolsdatabase:
-                DB=CombiFiles("Controls")
-            else:
-                DB=CombiFiles()
+            controlCFs=CombiFiles("Controls")
+            userCFs=CombiFiles(self.dbasenameroot)
             lookup=self["controlfileid"].value
-            result=DB.get(combifileid=lookup)
-            if not lookup:
+            results=controlCFs.query_by_kwargs(combifileid=lookup)
+            if not results:
+                results=userCFs.query_by_kwargs(combifileid=lookup)
+            if not results:
                 LOG.error("can't get control combifile {}".format(lookup))
-            self.control_combifile=result
+                return None
+            elif len(results)!=1:
+                LOG.error("{} control combifiles called {}".format(len(results),
+                                                                   lookup))
+                return None
+            else:
+                self.control_combifile=results[0]
         return self.control_combifile
 
     def get_focus_indices(self):
@@ -8195,8 +8288,13 @@ class ControlledExperiment(CombiFile,GraphicGenerator):
             TF,PM=self["timefocus"].value,self["plusminus"].value
             S=self.get_source_combifile().timevalues()
             C=self.get_control_combifile().timevalues()
-            self.focus_indices=(get_indices_around(S,TF,PM),
-                                get_indices_around(C,TF,PM))
+
+            if hasattr(self,"treatmenttimepoints"):
+                self.focus_indices=(([S.index(t) for t in self.treatmenttimepoints]),
+                                    ([C.index(t) for t in self.controltimepoints]))
+            else:
+                self.focus_indices=(get_indices_around(S,TF,PM),
+                                    get_indices_around(C,TF,PM))
         return self.focus_indices
 
     def get_source_timefoci(self):
@@ -8224,6 +8322,10 @@ class ControlledExperiment(CombiFile,GraphicGenerator):
                                treatmentcombifile,
                                controlcombifile,
                                rounder="{:.4f}",
+                               timefocus=None,
+                               plusminus=0.5,
+                               treatmenttimepoints=None,
+                               controltimepoints=None,
                                read=True,
                                store=True,
                                report=True):
@@ -8243,7 +8345,6 @@ class ControlledExperiment(CombiFile,GraphicGenerator):
             LOG.error("No controlcombifile {}".format(controlcombifile ))
             return None
         
-        CF,CN=treatmentcombifile,controlcombifile
         query=ControlledExperiment(combifile=CF,
                                    controlfileid=CN.value,
                                    experimentid=CF["experimentid"])
@@ -8285,18 +8386,33 @@ class ControlledExperiment(CombiFile,GraphicGenerator):
                                 timespan=tspn,
                                 timeseries=combined_timepoints,
                                 tempseries=combined_temppoints,
-                                plusminus=0.5)
-        ce["timefocus"].calculate()
-        SI,CI=ce.get_focus_indices()
+                                plusminus=plusminus)
+
+        if timefocus:
+            ce["timefocus"].set_value(timefocus)
+        else:
+            ce["timefocus"].calculate(plusminus=plusminus)
+
+        if not treatmenttimepoints:
+            SI,CI=ce.get_focus_indices()
+            ce.treatmenttimepoints=ce.get_source_timefoci()
+            ce.controltimepoints=ce.get_control_timefoci()
+        else:
+            ce.treatmenttimepoints=treatmenttimepoints
+            ce.controltimepoints=controltimepoints
+
         if report:
             LOG.info("ControlledExperiment {} is comparing timepoints "
                      "{} and {}".format(ce["controlledexperimentid"].value,
-                                        ce.get_source_timefoci(),
-                                        ce.get_control_timefoci()))
+                                        ce.treatmenttimepoints,
+                                        ce.controltimepoints))
         if read:
-            ce.read(store=store)
+            #print "_"*40
+            #ce.scrutinize()
+            #print "*"*40
+            ce.read(store=store) #stores readings
         if store:
-            ce.store()
+            ce.store() #stores ControlledExperiment
         return ce
     
     def read(self,store=True):
@@ -8507,41 +8623,6 @@ class ControlledExperiments(DBTable,InMemory):
                               "_ControlledExperiments.tab")
         self.output_to_txt(filename,overwrite=True)
 
-    def find_combifile_controls(self,combifile,report=True):
-        CF=combifile
-        if usecontrolsdatabase is True:
-            ctable=CombiFiles("Controls")
-        else:
-            ctable=CombiFiles()
-        if CF.is_control():
-            return False
-        else:
-            results=[]
-            for control in Treatment.controls:
-                query=CombiFile(platelayout=CF["platelayout"],
-                                treatment=control,
-                                dbasenameroot=ctable.dbasenameroot)
-                results+=ctable.query_by_record_object(query)
-
-        scoredresults=[]
-        for res in results:
-            common_timepoints=CF["timeseries"].intersection(res["timeseries"])
-            scoredresults.append((-len(common_timepoints),res))
-        scoredresults.sort()
-        results=[r for s,r in scoredresults]
-        
-        L=len(results)
-        if L==0:
-            idrider="no controls"
-        elif L==1:
-            idrider="1 control: {}".format(results[0]["combifileid"].value)
-        elif L>1:
-            idrider="{} controls".format(L)
-        if report:
-            LOG.info("{}.find_combifile_controls() found {} for {}"
-                     .format(self.__class__.__name__,idrider,str(CF)))
-        return results
-
     def create_controlled_experiments(self,combifile,
                                       rounder="{:.4f}",
                                       read=True,
@@ -8554,7 +8635,7 @@ class ControlledExperiments(DBTable,InMemory):
         CF=combifile
         if not CF["timespan"].is_sufficient(fortext="ControlledExperiment"):
             return False
-        controls=self.find_combifile_controls(CF)
+        controls=CF.return_scored_controls()
         if not controls:
             return None
 
@@ -8614,7 +8695,7 @@ class File(DBRecord,GraphicGenerator):
     >>> temp_f.calculate_all()
     >>> print temp_f["size"].value
     144930
-    >>> print temp_f in Files("Software Test")
+    >>> print temp_f in Files("Test")
     False
     """
     tableclassstring="Files"
@@ -9384,11 +9465,19 @@ class Strains(DBSharedTable,InMemory):
     tablepath="/strains"
     recordclass=Strain
     sourcefile="strains.csv"
+    attemptedtoload=False
     #sourcefilereader=StrainData(sourcefile)
 
     def populate(self):
+        if Strains.attemptedtoload:
+            return False
         LOG.info("populating Strains()")
         sourcefile=os.path.join(Locations()["genotypes"],Strains.sourcefile)
+        if not os.path.exists(sourcefile):
+            LOG.error("No strains info available; no file called {}"
+                      .format(sourcefile))
+            Strains.attemptedtoload=True
+            return False
         self.sfr=Strains.sourcefilereader=StrainData(sourcefile)
         shareddata,rowdata=self.sfr.parse()
         tostore=[]
@@ -9613,11 +9702,27 @@ class Ratio(DBFloat32):
             rec=self.get_record()
             if rec is False: return False
 
-            SI,CI=rec["controlledexperiment"].get_focus_indices()
-            R=rec.get_treatment_reading().rawmeasuredvaluesminusagar()
-            C=rec.get_control_reading().rawmeasuredvaluesminusagar()
-            Rfocalvals=indices_to_values(R,SI)
-            Cfocalvals=indices_to_values(C,CI)
+            CEX=rec["controlledexperiment"]
+                
+            SI,CI=CEX.get_focus_indices()
+            R=rec.get_treatment_reading()
+            if not R:
+                LOG.error("No treatment reading found for "
+                          "ControlledReading {}({})"
+                          .format(rec.value,
+                                  rec.dbasenameroot))
+                return None
+            Rvals=R.rawmeasuredvaluesminusagar()
+            C=rec.get_control_reading()
+            if not C:
+                LOG.error("No control reading found for "
+                          "ControlledReading {}({})"
+                          .format(rec.value,
+                                  rec.dbasenameroot))
+                return None
+            Cvals=C.rawmeasuredvaluesminusagar()
+            Rfocalvals=indices_to_values(Rvals,SI)
+            Cfocalvals=indices_to_values(Cvals,CI)
 
             rn,cn=len(Rfocalvals),len(Cfocalvals)
             if rn==0: LOG.error("reading {} has 0 timepoints in range"
@@ -9635,7 +9740,7 @@ class Ratio(DBFloat32):
                             "gets Ratio of {} from Rfocalvals={} and "
                             "Cfocalvals={}, rn={}, cn={}, R={}, C={}"
                             .format(self.value,rec.value,
-                                    rat,Rfocalvals,Cfocalvals,rn,cn,R,C))
+                                    rat,Rfocalvals,Cfocalvals,rn,cn,Rvals,Cvals))
             self.set_value(rat)
             rec["finalaverage"].set_value(ra)
         return self.value
@@ -9924,11 +10029,23 @@ class ControlledReading(CombiReading):
         return self["combireading"]
 
     def get_control_reading(self):
-        if usecontrolsdatabase:
-            DB=CombiReadings("Controls")
-        else:
-            DB=CombiReadings()
-        return DB.get(readingid=self["controlreadingid"].value)
+        if not hasattr(self,"control_reading"):
+            controlCRs=CombiReadings("Controls")
+            userCRs=CombiReadings(self.dbasenameroot)
+            lookup=self["controlreadingid"].value
+            results=controlCRs.query_by_kwargs(readingid=lookup)
+            if not results:
+                results=userCRs.query_by_kwargs(readingid=lookup)
+            if not results:
+                LOG.error("can't get control combireading {}".format(lookup))
+                return None
+            elif len(results)!=1:
+                LOG.error("{} control combireadings called {}".format(len(results),
+                                                                      lookup))
+                return None
+            else:
+                self.control_reading=results[0]
+        return self.control_reading
 
     def average_about_time(self,timepoint=16,plus_minus=0.5,
                            report=True,generatefresh=False):
@@ -10780,15 +10897,20 @@ class Autocurator(object):
 
 #MAIN #########################################################################
 if __name__=='__main__':
-    setup_logging("CRITICAL")
+    setup_logging("DEBUG")
+    #setup_logging("CRITICAL")
     sys.excepthook=log_uncaught_exceptions
 
-    Locations().change("Software Test")
-    import doctest
-    doctest.testmod()
+#    Locations().change("Test")
+#    import doctest
+#    doctest.testmod()
+    #ControlledExperiments()[-1].output_to_rQTL()
 
+    print Files()
 
-
+#    cf=Files().get_combifile_dict()["TST2abc"]
+#    print cf
+#    cf.read()
 
 
 

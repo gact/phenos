@@ -53,7 +53,8 @@ class MultiColumnListbox(object):
                  selectmode="browse",
                  notselectable=[],
                  linkedselectionindices=[],
-                 delete_fn=None):
+                 delete_fn=None,
+                 insert_fn=None):
         self.__dict__.update(locals().copy())
         self.values=[None]
 
@@ -108,6 +109,7 @@ class MultiColumnListbox(object):
         self.tree.bind("<Button-1>",self.extraselect)
         self.tree.bind("<Escape>",self.quit)
         self.tree.bind("<Delete>",self.delete)
+        self.tree.bind("<Insert>",self.insert)
         self.tree.bind("<MouseWheel>",
                        lambda event: self.tree.xview_scroll(-1*(event.delta/120),
                                                             "units"))
@@ -157,6 +159,8 @@ class MultiColumnListbox(object):
             itemnames=[itemnames]
         IO=None
         for itemname in itemnames:
+            if self.notselectable is None:
+                self.notselectable=[]
             if itemname not in self.notselectable:
                 if itemname in self.lookup_IO:
                     IO=self.lookup_IO[itemname]
@@ -268,9 +272,21 @@ class MultiColumnListbox(object):
         self.root.destroy()
 
     def delete(self,event=None):
+        NS=self.notselectable
+        self.notselectable=[]
         self.choose(event)
+        self.notselectable=NS
         if self.delete_fn:
             self.delete_fn(self.values)
+        self.values=[None]
+
+    def insert(self,event=None):
+        NS=self.notselectable
+        self.notselectable=[]
+        self.choose(event)
+        self.notselectable=NS
+        if self.insert_fn:
+            self.insert_fn(self.values)
         self.values=[None]
 
 

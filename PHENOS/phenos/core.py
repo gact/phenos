@@ -15,7 +15,7 @@ import win32com
 
 filename = os.path.basename(__file__)
 authors = ("David B. H. Barton")
-version = "2.5"
+version = "2.6"
 
 LOG=logging.getLogger()
 
@@ -249,6 +249,9 @@ def get_config_dict():
     CFpth=get_config_filepath()
     CFpars=ConfigParser.SafeConfigParser()
     CFpars.read(CFpth)
+    def splitcontrols(controlsstring):
+        return [c.strip() for c in controlsstring.split(",")]
+    
     output={"config_filepath":CFpth,
             "configparser":CFpars,
             "scriptdirectory":scriptdir(),
@@ -260,8 +263,61 @@ def get_config_dict():
                                           None),
             "user_folder":CFpars.get("Locations",
                                      "user_folder",
-                                     "Software Test")}
+                                     "Test"),
+            
+            "controls":splitcontrols(CFpars.get("Controls",
+                                                "controls",
+                                                "YPD, YPD 30C, "
+                                                "COM, COM 30C"))}
     return output
+
+def check_and_fix_paths(create_userfolders=True):
+    CD=get_config_dict()
+    if not os.path.exists(CD["target_directory"]):
+        try:
+            prepare_path(CD["target_directory"])
+        except Exception as e:
+            raise RuntimeError("target_directory {} doesn't exist "
+                               "and PHENOS can't create it"
+                               .format(CD["target_directory"],e,
+                               get_traceback()))
+    if not os.path.exists(CD["source_directory"]):
+        try:
+            prepare_path(CD["source_directory"])
+            print ("source_directory {} doesn't exist so "
+                   "creating it. Ensure microplate reader "
+                   "is set up to output to this location"
+                   .format(CD["source_directory"]))
+        except Exception as e:
+            raise RuntimeError("source_directory {} doesn't exist "
+                               "and PHENOS can't create it because {} {}"
+                               .format(CD["source_directory"],e,
+                               get_traceback()))
+    fulluserpath=os.path.join(CD["target_directory"],
+                              "Data files",
+                              CD["user_folder"])
+    if not os.path.exists(fulluserpath):
+        if create_userfolders:
+            try:
+                prepare_path(fulluserpath)
+            except Exception as e:
+                raise RuntimeError("user_folder {} doesn't exist "
+                                   "and PHENOS can't create it because {} {}"
+                                   .format(fulluserpath,e,get_traceback()))
+        else:
+            tryfolders=["All","Test","New folder"]
+            for tryfolder in tryfolders:
+                trypath=os.path.join(CD["target_directory"],
+                                     "Data files",
+                                     tryfolder)
+                if os.path.exists(trypath):
+                    CD["user_folder"]=tryfolder
+                    return CD
+            prepare_path(os.path.join(CD["target_directory"],
+                                      "Data files",
+                                      tryfolder))
+            CD["user_folder"]=tryfolder
+    return CD
 
 def yield_subpaths(startpath,dig=True,onlytype="all",includeroot=True):
     if dig:
@@ -432,24 +488,25 @@ def get_class_by_name(name):
 
 
 def get_newlogpath():
-    pp=os.path.join(get_config_dict()["target_directory"],
-                    "Logs",
-                    "phenos{}.log"
-                    .format(time.strftime("%y%m%d%H%M%S")))
+    logfolder=os.path.join(check_and_fix_paths()["target_directory"],
+                           "Logs")
+    prepare_path(logfolder)
+    pp=os.path.join(logfolder,
+                    "phenos{}.log".format(time.strftime("%y%m%d%H%M%S")))
     return pp
 
-def create_Windows_shortcut(target,location,report=False):
+def create_Windows_shortcut(targetpath,locationpath,report=False):
     try:
         shell=win32com.client.Dispatch("WScript.Shell")
-        shortcut=shell.CreateShortCut(location)
-        shortcut.Targetpath=target
+        shortcut=shell.CreateShortCut(locationpath)
+        shortcut.Targetpath=targetpath
         shortcut.save()
         if report:
             LOG.info("created shortcut to {} in {}"
-                     .format(target,location))
+                     .format(targetpath,locationpath))
     except Exception as e:
         LOG.error("failed to create shortcut to {} in {} because {} {}"
-                  .format(target,location,e,get_traceback()))
+                  .format(targetpath,locationpath,e,get_traceback()))
 
 def open_on_Windows(somepath):
     try:
