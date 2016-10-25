@@ -10,6 +10,7 @@ from itertools import izip
 import brewer2mpl
 import numpy as np
 from matplotlib import animation,colors,patches,ticker
+from matplotlib import figure as mplfigure
 import matplotlib.cm as clrmap
 import matplotlib.pyplot as pyplt
 import matplotlib.pylab as pylab

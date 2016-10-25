@@ -7874,16 +7874,17 @@ class CombiFile(DBRecord,GraphicGenerator):
                       .format(self.value))
             return
         if not self["allprocessed"].value:
+            self.open_plots_folder()
             allplots=[self.draw_empty(**kwargs),
                       #self.draw_layout(**kwargs),
                       self.draw_plated(**kwargs),
                       self.draw(**kwargs),
-                      self.animate(**kwargs),
                       self.plot(**kwargs),
                       self.plot_normal(**kwargs),
                       self.plot_grouped(**kwargs),
                       self.plot_replicates(**kwargs),
-                      self.histogram(**kwargs)]#,
+                      self.histogram(**kwargs),
+                      self.animate(**kwargs)]#,
                       #self.scatterplot(**kwargs)]
             if False in allplots:
                 LOG.warning("couldn't create all plots: {}"
@@ -7902,7 +7903,7 @@ class CombiFile(DBRecord,GraphicGenerator):
             except Exception as e:
                 LOG.error("couldn't close pyplt to free up memory because {} {}"
                           .format(e,get_traceback()))
-            self.open_plots_folder()
+            
         else:
             LOG.info("{} already fully illustrated"
                      .format(self.value))
@@ -8029,6 +8030,8 @@ class CombiFile(DBRecord,GraphicGenerator):
 
     def _delete_also(self):
         for f in self.yield_sourcefiles():
+            if f is None:
+                return
             try:
                 f.update_atoms(combifile=None)
             except Exception as e:
@@ -8871,6 +8874,8 @@ class File(DBRecord,GraphicGenerator):
                         LOG.warning("flagged Reading({}) because {} is flagged {}"
                                     .format(r.value,errorflag,errorreason))
                     readings.append(r)
+                if self["reorient"].value:
+                    readings.reverse()
 
                 updates={"filereader":PARS.__class__.__name__,
                          "nmeasures":self.shareddata["n_measures"],
@@ -9293,6 +9298,22 @@ class RenamedFile(DBRecord):
                     return filepath
         return False
 
+    def get_originalfilepath(self):
+        if not self["originalfolder"].is_valid():
+            return
+        if not self["originalfilename"].is_valid():
+            return
+        return os.path.join(self["originalfolder"].value,
+                            self["originalfilename"].value)
+
+    def get_renamedfilepath(self):
+        if not self["renamedfolder"].is_valid():
+            return
+        if not self["renamedfilename"].is_valid():
+            return
+        return os.path.join(self["renamedfolder"].value,
+                            self["renamedfilename"].value)
+
     def get_file(self):
         NF=self["renamedfilename"]
         if not NF.is_valid():
@@ -9308,6 +9329,23 @@ class RenamedFile(DBRecord):
             return None
         else:
             return searchresult
+
+    def remake_file(self):
+        OFP=self.get_originalfilepath()
+        RFP=self.get_renamedfilepath()
+        if not OFP:
+            LOG.error("{} does not have valid originalfilepath".format(self))
+            return
+        if not RFP:
+            LOG.error("{} does not have valid renamedfilepath".format(self))
+            return
+        if not os.path.exists(OFP):
+            LOG.error("{} does not exist".format(OFP))
+            return
+        if os.path.exists(RFP):
+            LOG.info("{} already exists".format(RFP))
+            return
+        return copy_to(OFP,RFP)
 
 class RenamedFiles(DBSharedTable):
     _shared_state={}
@@ -9347,6 +9385,10 @@ class RenamedFiles(DBSharedTable):
             sortlist.append((Ofil,Rfil,CT))
         sortlist.sort(key=lambda t: t[2],reverse=True)
         return sortlist
+
+    def remake(self):
+        for rf in self:
+            rf.remake_file()
 
 #STRAINS ######################################################################
 class StrainID(DBString):
@@ -10897,25 +10939,9 @@ class Autocurator(object):
 
 #MAIN #########################################################################
 if __name__=='__main__':
-    setup_logging("DEBUG")
-    #setup_logging("CRITICAL")
+    setup_logging("CRITICAL")
     sys.excepthook=log_uncaught_exceptions
 
-#    Locations().change("Test")
-#    import doctest
-#    doctest.testmod()
-    #ControlledExperiments()[-1].output_to_rQTL()
-
-    print Files()
-
-#    cf=Files().get_combifile_dict()["TST2abc"]
-#    print cf
-#    cf.read()
-
-
-
-
-
-
-
-
+    Locations().change("Test")
+    #import doctest
+    #doctest.testmod()

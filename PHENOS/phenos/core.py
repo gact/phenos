@@ -410,9 +410,11 @@ def copy_to(filepath,targetpath,report=True):
     """
     if not os.path.exists(filepath):
         return False
+    prepare_path(os.path.dirname(targetpath))
     shutil.copy(filepath,targetpath)
     if report:
         LOG.info("copy created: {}".format(targetpath))
+    return os.path.exists(targetpath)
 
 def copy_contents_to(sourcedirectory,targetdirectory,report=True,
                      ignore=[".lnk"]):
