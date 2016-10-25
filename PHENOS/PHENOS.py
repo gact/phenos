@@ -1096,6 +1096,7 @@ def handle_file(MAINDICT):
         #wait for copy to complete
         
         #Store File object & Readings
+        fo=None
         try:
             fo=File(filepath=str(targetfilename),
                     platelayout=str(layout),
@@ -1109,10 +1110,6 @@ def handle_file(MAINDICT):
             fo.store()
             readingcount=fo.read()
             MAINDICT["fileobject"]=fo
-            #LOG.info("drawing if empty")
-            #fo.draw_if_empty(show=True)
-            #LOG.info("drew if empty")
-            
             LOG.info("Created File({}) and added to {}"
                      "along with {} Readings"
                      .format(fo.value,
@@ -1123,6 +1120,21 @@ def handle_file(MAINDICT):
                       "because {} {}"
                       .format(targetfilename,e,get_traceback()))
             return MAINDICT
+
+        if fo:
+            try:
+                LOG.info("drawing if empty")
+                PVOB=fo.draw_if_empty(show=False)
+                if PVOB:
+                    del PVOB
+                try:
+                    pyplt.close("all")
+                except:
+                    pass
+                LOG.info("drew if empty and deleted Plateview object")
+            except Exception as e:
+                LOG.error("Couldn't draw_if_empty because {} {}"
+                          .format(e,get_traceback()))
 
         #Store RenamedFile
         try:
@@ -1376,13 +1388,18 @@ def main_combine():
     notselectable=None
 
     if len(CombiFiles())>0:
-        LST3=[(cf.value,
-               cf["treatment"].value,
-               cf["platelayout"].value,
-               cf.is_control(),
-               timeconvert(cf["timestamp"]),
-               "YES")
-               for cf in CombiFiles()]
+        LST3=[]
+        for cf in CombiFiles():
+            try:
+                LST3.append((cf.value,
+                             cf["treatment"].value,
+                             cf["platelayout"].value,
+                             cf.is_control(),
+                             timeconvert(cf["timestamp"]),
+                             "YES"))
+            except Exception as e:
+                LOG.error("Can't add combifile {} because {} {}"
+                          .format(cf,e,get_traceback()))
         LST2+=[(" ","----","----","")]+LST3
         notselectable=[l[0] for l in LST3]
 
@@ -1535,15 +1552,17 @@ def delete_files(files,checkboxes=True):
             root.mainloop()
             GOAHEAD=OB4.value
         if GOAHEAD=="Yes":
+            fval=f.value
+            exval=f["experimentid"]
             f.delete()
             #Also, delete any CombiFile derived from it
             CF=CombiFiles()
-            cfa=CF.query_by_kwargs(combifileid=f.value)
+            cfa=CF.query_by_kwargs(experimentid=exval)
             delete_combifiles(cfa,checkboxes=False)
             #Also delete from Controls or All
-            fa=Files("All").query_by_kwargs(fileid=f.value)
+            fa=Files("All").query_by_kwargs(fileid=fval)
             delete_files(fa,checkboxes=False)
-            fc=Files("Controls").query_by_kwargs(fileid=f.value)
+            fc=Files("Controls").query_by_kwargs(fileid=fval)
             delete_files(fc,checkboxes=False)
     return True
 
