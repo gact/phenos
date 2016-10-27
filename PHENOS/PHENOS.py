@@ -16,6 +16,7 @@ authors = ("David B. H. Barton")
 version = "1.0"
 #
 LOCS=Locations()
+windowposition='{}x{}+{}+{}'.format(*LOCS.windowposition)
 platereader_output=LOCS.platereader_output
 FALL=Files("All")
 PLO=PlateLayouts()
@@ -143,7 +144,7 @@ def choose_file_to_rename():
                            default=LST[0][0],
                            delete_fn=delete_renamedfile)
     root.focus_force()
-    root.geometry('{}x{}+{}+{}'.format(1100,800,100,100))
+    root.geometry(windowposition)
     root.mainloop() #waits for selection/cancel
     FILETORENAME=LB1.values[0]
     LOG.info("user selected file {} to rename".format(FILETORENAME))
@@ -231,7 +232,7 @@ def summarise_file(MAINDICT):
                             lists=LST,
                             default=default)
     root.focus_force()
-    root.geometry('{}x{}+{}+{}'.format(1100,800,100,100))
+    root.geometry(windowposition)
     root.mainloop() #waits for selection/cancel
     if LB1b.values[0]:
         MAINDICT["shareddata"]=shareddata
@@ -273,7 +274,7 @@ def choose_user_folder(MAINDICT,
                            lists=LST,
                            default=DEF)
     root.focus_force()
-    root.geometry('{}x{}+{}+{}'.format(1100,800,100,100))
+    root.geometry(windowposition)
     root.mainloop()
     USERFOLDER=LB2.values[0]
     LOG.info("user selected folder {}".format(USERFOLDER))
@@ -285,7 +286,7 @@ def choose_user_folder(MAINDICT,
             root=tk.Tk()
             EB1=EntryBox(root,title="PHENOS",instruct=instruction)
             root.focus_force()
-            root.geometry('{}x{}+{}+{}'.format(1100,800,100,100))
+            root.geometry(windowposition)
             root.mainloop()
             USERFOLDER=EB1.value
             fullpath=os.path.join(LOCS["datafiles"],USERFOLDER)
@@ -393,7 +394,7 @@ def choose_user_initials(MAINDICT):
                                lists=LST,
                                default=DEF)
         root.focus_force()
-        root.geometry('{}x{}+{}+{}'.format(1100,800,100,100))
+        root.geometry(windowposition)
         root.mainloop()
         USERINITIALS=LB3.values[0]
 
@@ -404,7 +405,7 @@ def choose_user_initials(MAINDICT):
             root=tk.Tk()
             EB2=EntryBox(root,title="PHENOS",instruct=instruction)
             root.focus_force()
-            root.geometry('{}x{}+{}+{}'.format(1100,800,100,100))
+            root.geometry(windowposition)
             root.mainloop()
             USERINITIALS=EB2.value
             if not 1<=len(USERINITIALS)<=5:
@@ -463,7 +464,7 @@ def choose_experiment_number(MAINDICT):
                            lists=LST,
                            default=DEF)
     root.focus_force()
-    root.geometry('{}x{}+{}+{}'.format(1100,800,100,100))
+    root.geometry(windowposition)
     root.mainloop()
     EXPNUMBER=LB4.values[0]
 
@@ -474,7 +475,7 @@ def choose_experiment_number(MAINDICT):
             root=tk.Tk()
             EB3=EntryBox(root,title="PHENOS",instruct=instruction)
             root.focus_force()
-            root.geometry('{}x{}+{}+{}'.format(1100,800,100,100))
+            root.geometry(windowposition)
             root.mainloop()
             EXPNUMBER=EB3.value
             if EXPNUMBER is None:
@@ -546,7 +547,7 @@ def choose_file_letter(MAINDICT):
                            default=DEF,
                            notselectable=INI.keys())
     root.focus_force()
-    root.geometry('{}x{}+{}+{}'.format(1100,800,100,100))
+    root.geometry(windowposition)
     root.mainloop()
     FILELETTER=LB4.values[0]
 
@@ -557,7 +558,7 @@ def choose_file_letter(MAINDICT):
             root=tk.Tk()
             EB3=EntryBox(root,title="PHENOS",instruct=instruction)
             root.focus_force()
-            root.geometry('{}x{}+{}+{}'.format(1100,800,100,100))
+            root.geometry(windowposition)
             root.mainloop()
             FILELETTER=EB3.value
             if FILELETTER is None:
@@ -627,7 +628,7 @@ def choose_treatment(MAINDICT):
                            lists=LST2,
                            default=DEF)
     root.focus_force()
-    root.geometry('{}x{}+{}+{}'.format(1100,800,100,100))
+    root.geometry(windowposition)
     root.mainloop()
     TREATMENT=LB5.values[0]
 
@@ -638,7 +639,7 @@ def choose_treatment(MAINDICT):
             root=tk.Tk()
             EB4=EntryBox(root,title="PHENOS",instruct=instruction)
             root.focus_force()
-            root.geometry('{}x{}+{}+{}'.format(1100,800,100,100))
+            root.geometry(windowposition)
             root.mainloop()
             TREATMENT=EB4.value
             if len(TREATMENT)>40:
@@ -697,7 +698,7 @@ def choose_layout(MAINDICT):
                            lists=LST,
                            default=DEF)
     root.focus_force()
-    root.geometry('{}x{}+{}+{}'.format(1100,800,100,100))
+    root.geometry(windowposition)
     root.mainloop()
     LAYOUT=LB6.values[0]
 
@@ -707,7 +708,7 @@ def choose_layout(MAINDICT):
         LAYOUT=None
         while not LAYOUT:
             root=tk.Tk()
-            root.geometry('{}x{}+{}+{}'.format(1100,800,100,100))
+            root.geometry(windowposition)
             root.withdraw()
             filename=tkFileDialog.askopenfilename(initialdir=LOC,
                                                   title=INS)
@@ -751,7 +752,7 @@ def choose_orientation(MAINDICT):
                             "word 'Singer' on the PlusPlate lid\n "
                             "facing you and the correct way up?"))
     root.focus_force()
-    root.geometry('{}x{}+{}+{}'.format(1100,800,100,100))
+    root.geometry(windowposition)
     root.mainloop()
     ORIENT=OB1.value
     if ORIENT=="Yes":
@@ -783,7 +784,7 @@ def choose_exclusions(MAINDICT):
                             "contamination?"),
                   default="No")
     root.focus_force()
-    root.geometry('{}x{}+{}+{}'.format(1100,800,100,100))
+    root.geometry(windowposition)
     root.mainloop()
     answer=OB2.value
     if answer=="No":
@@ -830,7 +831,7 @@ def choose_exclusions(MAINDICT):
                            default=DEF.keys(),
                            lists=LST)
     root.focus_force()
-    root.geometry('{}x{}+{}+{}'.format(1100,800,100,100))
+    root.geometry(windowposition)
     root.mainloop()
     EXCLUSIONS=LB7.values
 
@@ -872,7 +873,7 @@ def choose_exclusions(MAINDICT):
                                .format(WL)),
                      default="contamination")
         root.focus_force()
-        root.geometry('{}x{}+{}+{}'.format(1100,800,100,100))
+        root.geometry(windowposition)
         root.mainloop()
         watchlist[WL]=EB5.value
 
@@ -946,7 +947,7 @@ def choose_timeoffset(MAINDICT):
                            lists=LST,
                            default=DEF)
     root.focus_force()
-    root.geometry('{}x{}+{}+{}'.format(1100,800,100,100))
+    root.geometry(windowposition)
     root.mainloop()
     TIMEOFFSET=LB7.values[0]
     if TIMEOFFSET is None: return None
@@ -957,7 +958,7 @@ def choose_timeoffset(MAINDICT):
             root=tk.Tk()
             EB5=EntryBox(root,title="PHENOS",instruct=instruction)
             root.focus_force()
-            root.geometry('{}x{}+{}+{}'.format(1100,800,100,100))
+            root.geometry(windowposition)
             root.mainloop()
             TIMEOFFSET=EB5.value
             if TIMEOFFSET is None:
@@ -998,7 +999,7 @@ def choose_note(MAINDICT):
         root=tk.Tk()
         EB6=EntryBox(root,title="PHENOS",instruct=instruction)
         root.focus_force()
-        root.geometry('{}x{}+{}+{}'.format(1100,800,100,100))
+        root.geometry(windowposition)
         root.mainloop()
         NOTE=EB6.value
         if NOTE is None:
@@ -1074,7 +1075,7 @@ def handle_file(MAINDICT):
                   title="PHENOS",
                   instruct=INS)
     root.focus_force()
-    root.geometry('{}x{}+{}+{}'.format(1100,800,100,100))
+    root.geometry(windowposition)
     root.mainloop()
     answer=OB3.value
 
@@ -1224,7 +1225,7 @@ def main_rename():
                   options=["Rename another","Undo","Combine & display Files","Quit"],
                   default="Combine Files")
     root.focus_force()
-    root.geometry('{}x{}+{}+{}'.format(1100,800,100,100))
+    root.geometry(windowposition)
     root.mainloop()
     counter=0
     NEXT=OB5.value
@@ -1275,7 +1276,7 @@ def delete_renamedfile(renamedfile,checkboxes=True):
                       title="PHENOS",
                       instruct=instruction)
         root.focus_force()
-        root.geometry('{}x{}+{}+{}'.format(1100,800,100,100))
+        root.geometry(windowposition)
         root.mainloop()
         GOAHEAD=OB4.value
     if GOAHEAD=="Yes":
@@ -1320,7 +1321,7 @@ def undo_rename():
                       title="PHENOS",
                       instruct=instruction)
         root.focus_force()
-        root.geometry('{}x{}+{}+{}'.format(1100,800,100,100))
+        root.geometry(windowposition)
         root.mainloop()
         GOAHEAD=OB4.value
         if GOAHEAD=="Yes":
@@ -1341,7 +1342,7 @@ def undo_rename():
                           options=["Undo again","Rename another","Combine & display Files","Quit"],
                           default="Undo again")
             root.focus_force()
-            root.geometry('{}x{}+{}+{}'.format(1100,800,100,100))
+            root.geometry(windowposition)
             root.mainloop()
             counter=0
             NEXT=OB6.value
@@ -1419,7 +1420,7 @@ def main_combine():
                            notselectable=notselectable,
                            delete_fn=delete_combifiles)
     root.focus_force()
-    root.geometry('{}x{}+{}+{}'.format(1100,800,100,100))
+    root.geometry(windowposition)
     root.mainloop()
     PICK=LB7.values
     if type(PICK)!=list:
@@ -1448,7 +1449,7 @@ def main_combine():
                                "Continue to next CombiFile"],
                       default="Create visualizations")
         root.focus_force()
-        root.geometry('{}x{}+{}+{}'.format(1100,800,100,100))
+        root.geometry(windowposition)
         root.mainloop()
         counter=0
         OPT=OB6.value
@@ -1484,7 +1485,7 @@ def main_combine():
                                    "No"],
                           default="Yes")
             root.focus_force()
-            root.geometry('{}x{}+{}+{}'.format(1100,800,100,100))
+            root.geometry(windowposition)
             root.mainloop()
             counter=0
             OPT=OB7.value
@@ -1508,7 +1509,7 @@ def main_combine():
                                    "No"],
                           default="Yes")
             root.focus_force()
-            root.geometry('{}x{}+{}+{}'.format(1100,800,100,100))
+            root.geometry(windowposition)
             root.mainloop()
             counter=0
             OPT=OB7.value
@@ -1548,7 +1549,7 @@ def delete_files(files,checkboxes=True):
                           title="PHENOS",
                           instruct=instruction)
             root.focus_force()
-            root.geometry('{}x{}+{}+{}'.format(1100,800,100,100))
+            root.geometry(windowposition)
             root.mainloop()
             GOAHEAD=OB4.value
         if GOAHEAD=="Yes":
@@ -1598,7 +1599,7 @@ def delete_combifiles(combifiles,checkboxes=True,delete_files_too=False):
                           title="PHENOS",
                           instruct=instruction)
             root.focus_force()
-            root.geometry('{}x{}+{}+{}'.format(1100,800,100,100))
+            root.geometry(windowposition)
             root.mainloop()
             GOAHEAD=OB4.value
         if GOAHEAD=="Yes":
@@ -1645,7 +1646,7 @@ def delete_controlledexperiments(controlledexperiments,checkboxes=True):
                           title="PHENOS",
                           instruct=instruction)
             root.focus_force()
-            root.geometry('{}x{}+{}+{}'.format(1100,800,100,100))
+            root.geometry(windowposition)
             root.mainloop()
             GOAHEAD=OB4.value
         if GOAHEAD=="Yes":
@@ -1714,7 +1715,7 @@ def main_rqtl():
     headers=["Controlled Experiment ID",
              "Treatment","Plate layout",
              "Combined file","Control file",
-             "Time crossover","Array size",
+             "Time window","Array size",
              "Is Genotyped?","Already exists?"]
     lookup={}
     #New...
@@ -1806,7 +1807,7 @@ def main_rqtl():
                            delete_fn=delete_controlledexperiments,
                            insert_fn=alter_timefocus)
     root.focus_force()
-    root.geometry('{}x{}+{}+{}'.format(1100,800,100,100))
+    root.geometry(windowposition)
     root.mainloop()
     PICK=LB8.values
     #if type(PICK)!=list:
@@ -1841,7 +1842,7 @@ def main_rqtl():
                 root=tk.Tk()
                 EB3=EntryBox(root,title="PHENOS",instruct=instruction)
                 root.focus_force()
-                root.geometry('{}x{}+{}+{}'.format(1100,800,100,100))
+                root.geometry(windowposition)
                 root.mainloop()
                 TIMEFOCUS=EB3.value
                 if TIMEFOCUS is None:
@@ -1883,7 +1884,7 @@ def main_rqtl():
                                        "No"],
                               default="Yes")
                 root.focus_force()
-                root.geometry('{}x{}+{}+{}'.format(1100,800,100,100))
+                root.geometry(windowposition)
                 root.mainloop()
                 counter=0
                 OPT=OB8.value
@@ -1944,7 +1945,7 @@ def main():
                            "Generate rQTL input for combined files"],
                   default="Create visualizations")
     root.focus_force()
-    root.geometry('{}x{}+{}+{}'.format(1100,800,100,100))
+    root.geometry(windowposition)
     root.mainloop()
 
     OPT=OB7.value
@@ -1964,7 +1965,7 @@ def main():
                           options=["OK"],
                           default="OK")
             root.focus_force()
-            root.geometry('{}x{}+{}+{}'.format(1100,800,100,100))
+            root.geometry(windowposition)
             root.mainloop()
             if not OB8.value:
                 return
@@ -1981,7 +1982,7 @@ def main():
                           options=["OK"],
                           default="OK")
             root.focus_force()
-            root.geometry('{}x{}+{}+{}'.format(1100,800,100,100))
+            root.geometry(windowposition)
             root.mainloop()
             if not OB9.value:
                 return

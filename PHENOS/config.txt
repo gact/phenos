@@ -1,5 +1,8 @@
 [Locations]
 source_directory = C:\Users\localadmin1\Desktop\Platereader output
-target_directory = C:\PHENOS
-user_folder = Software Test
+target_directory = D:\PHENOS3
+user_folder = HZ
+
+[Controls]
+controls = YPD, YPD 30C, COM, COM 30C, Control
 
