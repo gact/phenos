@@ -1603,18 +1603,25 @@ def delete_combifiles(combifiles,checkboxes=True,delete_files_too=False):
             root.mainloop()
             GOAHEAD=OB4.value
         if GOAHEAD=="Yes":
+            cv=cf.value
+            cdbnr=cf.dbasenameroot
             cf.delete()
+            #Also remove reference from any other Files referring to this
+            F=Files(cdbnr)
+            fq=F.query_by_kwargs(combifile=cv)
+            for f in fq:
+                f.update_atoms(combifile=None)
             #Also delete any ControlledExperiments derived from it
             CE=ControlledExperiments()
-            cea=CE.query_by_kwargs(combifile=cf.value)
+            cea=CE.query_by_kwargs(combifile=cv)
             delete_controlledexperiments(cea,checkboxes=False)
             #And any experiments that use this as a control...
-            ceac=CE.query_by_kwargs(controlfileid=cf.value)
+            ceac=CE.query_by_kwargs(controlfileid=cv)
             delete_controlledexperiments(ceac,checkboxes=False)
             #Also delete from Controls or All
-            cfa=CombiFiles("All").query_by_kwargs(combifileid=cf.value)
+            cfa=CombiFiles("All").query_by_kwargs(combifileid=cv)
             delete_combifiles(cfa,checkboxes=False,delete_files_too=True)
-            cfc=CombiFiles("Controls").query_by_kwargs(combifileid=cf.value)
+            cfc=CombiFiles("Controls").query_by_kwargs(combifileid=cv)
             delete_combifiles(cfc,checkboxes=False,delete_files_too=True)
     return True
 
