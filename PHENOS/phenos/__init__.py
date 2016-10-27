@@ -7,8 +7,8 @@ Module notes
 #import statements
 import os
 from .core import *
-from .dbtypes import *
 from .graphics import *
+from .dbtypes import *
 from .gui import *
 #from .gui2 import *
 

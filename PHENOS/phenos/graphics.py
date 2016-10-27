@@ -10,19 +10,18 @@ from itertools import izip
 import brewer2mpl
 import numpy as np
 from matplotlib import animation,colors,patches,ticker
-from matplotlib import figure as mplfigure
 import matplotlib.cm as clrmap
 import matplotlib.pyplot as pyplt
 import matplotlib.pylab as pylab
 from scipy.stats import norm
 #phenos
-from core import LOG,setup_logging,log_uncaught_exceptions,flatten,filterdict,get_traceback
+from core import LOG,setup_logging,log_uncaught_exceptions,flatten,filterdict,get_traceback,get_config_dict
 
 # #############################################################################
 
 filename = os.path.basename(__file__)
 authors = ("David B. H. Barton")
-version = "2.5"
+version = "2.6"
 
 # ###########################################################################
 def display_image(filepath,figsize=(14,9),aspect=1):
@@ -129,6 +128,9 @@ def flagargs(flagslist):
                                markeredgecolor='red',
                                markerfacecolor=u'none'))
     return output
+
+def get_graphicstype():
+    return get_config_dict()["graphicstype"]
 #
 
 #GENERAL ####################################################################
@@ -795,7 +797,7 @@ class PlateView(object):
                  titleloc='left',
                  titlefontsize=11,
                  savepath=None,
-                 extension="jpg",
+                 extension=get_graphicstype(),
                  copyto=None,
                  show=False,
                  figsize=(15,10),
@@ -1327,7 +1329,7 @@ class CurvePlot(PlateView):
                  titleloc='left',
                  titlefontsize=11,
                  savepath=None,
-                 extension="jpg",
+                 extension=get_graphicstype(),
                  copyto=None,
                  show=False,
                  figsize=(15,10),
@@ -1550,7 +1552,7 @@ class Histogram(PlateView):
                  titleloc='left',
                  titlefontsize=11,
                  savepath=None,
-                 extension="jpg",
+                 extension=get_graphicstype(),
                  copyto=None,
                  show=False,
                  figsize=(15,10),
@@ -1650,7 +1652,7 @@ class Scatterplot(PlateView):
                  titleloc='left',
                  titlefontsize=11,
                  savepath=None,
-                 extension="jpg",
+                 extension=get_graphicstype(),
                  copyto=None,
                  show=False,
                  figsize=(10,10),
@@ -1741,7 +1743,7 @@ class Scatterplot(PlateView):
 def plateview_emptyOLD(combifileob,
                     prefix="1_EmptyPlate",
                     suffix="agar absorbance (0.2-0.3)",
-                    extension="jpg",
+                    extension=get_graphicstype(),
                     **kwargs):
     kwargs.update(locals().copy())
     savepath=get_checked_savepath(combifileob,**kwargs)
@@ -1764,7 +1766,7 @@ def plateview_emptyOLD(combifileob,
 def plateview_emptylocalOLD(combifileob,
                          prefix="1b_EmptyPlate",
                          suffix="agar absorbance local min-max",
-                         extension="jpg",
+                         extension=get_graphicstype(),
                          **kwargs):
     kwargs.update(locals().copy())
     savepath=get_checked_savepath(combifileob,**kwargs)
@@ -1787,7 +1789,7 @@ def plateview_platedOLD(combifileob,
                      prefix="2_PrintingQuality",
                      suffix="scaled by platedmass (scale=0-1.0) "
                             "colored by local min-max",
-                     extension="jpg",
+                     extension=get_graphicstype(),
                      **kwargs):
     kwargs.update(locals().copy())
     savepath=get_checked_savepath(combifileob,**kwargs)
@@ -1849,7 +1851,7 @@ def plateview_layout(platelayoutob,
 def plateview_empty(combifileob,
                     prefix="1_EmptyPlate",
                     suffix="agar absorbance",
-                    extension="jpg",
+                    extension=get_graphicstype(),
                     **kwargs):
     kwargs.update(locals().copy())
     savepath=get_checked_savepath(combifileob,**kwargs)
@@ -1877,7 +1879,7 @@ def plateview_plated(combifileob,
                      prefix="2_PrintingQuality",
                      suffix="scaled by platedmass local min-max "
                             "colored by platedmass (scale=0-1.0)",
-                     extension="jpg",
+                     extension=get_graphicstype(),
                      **kwargs):
     kwargs.update(locals().copy())
     savepath=get_checked_savepath(combifileob,**kwargs)
@@ -1904,7 +1906,7 @@ def plateview_plated(combifileob,
 def plateview_final(combifileob,
                     prefix="3_FinalGrowth",
                     suffix="scaled by maximumwithoutagar",
-                    extension="jpg",
+                    extension=get_graphicstype(),
                     **kwargs):
     kwargs.update(locals().copy())
     savepath=get_checked_savepath(combifileob,**kwargs)
@@ -1926,7 +1928,7 @@ def plateview_mixed(combifileob,
                     prefix="3_FinalGrowth",
                     suffix="scaled by maximumwithoutagar, "
                            "colored by platedmass",
-                    extension="jpg",
+                    extension=get_graphicstype(),
                     **kwargs):
     kwargs.update(locals().copy())
     savepath=get_checked_savepath(combifileob,**kwargs)
@@ -1946,7 +1948,7 @@ def plateview_mixed(combifileob,
 
 def plateview_experimentratios(controlexpob,
                                prefix="9_ControlledRatios",
-                               extension="jpg",
+                               extension=get_graphicstype(),
                                **kwargs):
     kwargs.setdefault("suffix","at {:.1f}+-{:.1f}hrs "
                                "scaled by finalaverage"

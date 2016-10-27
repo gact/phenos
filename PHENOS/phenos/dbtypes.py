@@ -51,7 +51,7 @@ except:
 
 filename=os.path.basename(__file__)
 authors=("David B. H. Barton")
-version="2.5"
+version="2.6"
 
 usecontrolsdatabase=True
 shareddbasenameroot="_phenos_shared_database"
@@ -301,6 +301,7 @@ class Locations(object):
     currentuserdbasepath=None
     currentuserdbase=None
     shareddbase=None
+    graphicstype="jpg"
 
     def __init__(self,userfolder=None):
         self.__dict__ = self._shared_state
@@ -321,6 +322,8 @@ class Locations(object):
             sys.exit()
         Locations.rootdirectory=CD["target_directory"]
         Locations.currentuserfolder=CD["user_folder"]
+        Locations.graphicstype=CD["graphicstype"]
+        Locations.windowposition=CD["windowposition"]
         return Locations.configparser
 
     def find_mainlocs(self):
@@ -574,7 +577,7 @@ class GraphicGenerator(object):
         kwargs.setdefault("userfolder",os.path.split(CD)[-1])
         kwargs.setdefault("experimentfolder",self.get_subfoldername())
         kwargs.setdefault("graphicsnameroot",self.get_graphicsnameroot())
-        kwargs.setdefault("extension","jpg")
+        kwargs.setdefault("extension",Locations.graphicstype)
         kwargs.setdefault("prefix",None)
         kwargs.setdefault("suffix",None)
         
@@ -2929,7 +2932,14 @@ class DBase(object):
         return len(self.tablenames)
 
     def display_all(self):
-        print self.fileob.listNodes("/")
+        try:
+            print self.fileob.listNodes("/") #pytables v2
+        except AttributeError:
+            print self.fileob.list_nodes("/") #pytables v3
+        except Exception as e:
+            LOG.critical("Unable to run PyTables listNodes (v2) "
+                         "or list_nodes (v3) because {} {}"
+                         .format(e,get_traceback()))
 
     def __iter__(self):
         for i in self.fileob:
@@ -2945,20 +2955,45 @@ class DBase(object):
         """
         if type(tab)==str:
             if tab!=self.table._v_pathname:
-                self.table=self.fileob.getNode(tab)
+                try:
+                    self.table=self.fileob.getNode(tab) #pytables v2
+                except AttributeError:
+                    self.table=self.fileob.get_node(tab) #pytables v3
+                except Exception as e:
+                    LOG.critical("Unable to run PyTables getNode (v2) "
+                                 "or get_node (v3) because {} {}"
+                                 .format(e,get_traceback()))
         elif issubclass(tab.__class__,DBTable):
             if tab.tablepath in self.fileob:
-                self.table=self.fileob.getNode(tab.tablepath)
+                try:
+                    self.table=self.fileob.getNode(tab.tablepath) #pytables v2
+                except AttributeError:
+                    self.table=self.fileob.get_node(tab.tablepath) #pytables v3
+                except Exception as e:
+                    LOG.critical("Unable to run PyTables getNode (v2) "
+                                 "or get_node (v3) because {} {}"
+                                 .format(e,get_traceback()))
             else:
                 self.create_table(tab)
         return self.table
 
     def create_table(self,dbtable_instance):
         tabpath=dbtable_instance.tablepath
-        self.table= self.fileob.create_table(self.fileob._getOrCreatePath(os.path.split(tabpath)[0], True),
-                                             os.path.split(tabpath)[1],
-                                             description=dbtable_instance.recordclass._get_description(),
-                                             title=dbtable_instance.__class__.__name__)
+        TABPTH,TABNM=os.path.split(tabpath)
+        DESC=dbtable_instance.recordclass._get_description()
+        TIT=dbtable_instance.__class__.__name__
+        try:
+            PTH=self.fileob._getOrCreatePath(TABPTH,True) #pytables v2
+        except AttributeError:
+            PTH=self.fileob._get_or_create_path(TABPTH,True) #pytables v3
+        except Exception as e:
+            LOG.critical("Unable to run PyTables _getOrCreatePath (v2) "
+                         "or get_or_create_path (v3) because {} {}"
+                         .format(e,get_traceback()))
+        self.table=self.fileob.create_table(PTH,
+                                            TABNM,
+                                            description=DESC,
+                                            title=TIT)
 
     def _open_all(self,mode='a'):
         self.fileob=tbs.open_file(self.filepath,mode)
@@ -2969,7 +3004,7 @@ class DBase(object):
             self.fileob.close()
             self._open_all(mode)
             return mode
-        return False        
+        return False
 
     def __enter__(self):
         return self
@@ -7866,6 +7901,7 @@ class CombiFile(DBRecord,GraphicGenerator):
                 return False
 
     def illustrate(self,**kwargs):
+        overwrite=kwargs.pop("overwrite",False)
         try:
             TV=self["timevalues"]
             assert TV
@@ -7873,7 +7909,7 @@ class CombiFile(DBRecord,GraphicGenerator):
             LOG.error("unable to get valid time values for {}"
                       .format(self.value))
             return
-        if not self["allprocessed"].value:
+        if overwrite or not self["allprocessed"].value:
             self.open_plots_folder()
             allplots=[self.draw_empty(**kwargs),
                       #self.draw_layout(**kwargs),
@@ -7921,8 +7957,9 @@ class CombiFile(DBRecord,GraphicGenerator):
                         ys.append(y)
                         cs.append(FS.genotypegroup)
                 if xs:
-                    title="{} ({}).jpg".format(self.value,
-                                               self["treatment"].value)
+                    title="{} ({}).{}".format(self.value,
+                                              self["treatment"].value,
+                                              Locations.graphicstype)
                     savepath=os.path.join(Locations().rootdirectory,
                                           "rQTL output",
                                           "By CombiFile",
@@ -8533,8 +8570,9 @@ class ControlledExperiment(CombiFile,GraphicGenerator):
                 ys.append(y)
                 cs.append(FS.genotypegroup)
         if xs:
-            title="{} ({}).jpg".format(self.value,
-                                       self["treatment"].value)
+            title="{} ({}).{}".format(self.value,
+                                      self["treatment"].value,
+                                      Locations.graphicstype)
             savepath=os.path.join(Locations().rootdirectory,
                                   "rQTL output",
                                   "By ControlledExperiment",
@@ -10035,8 +10073,9 @@ class CombiReadings(Readings):
                 pyplt.ylabel('platedmass')
                 pyplt.xlabel(versus)
                 pyplt.scatter(xm,yp)
-                fig.savefig("platedmass vs {} {}.jpg"
-                            .format(versus,trt))
+                fig.savefig("platedmass vs {} {}.{}"
+                            .format(versus,trt,
+                                    Locations.graphicstype))
                 pyplt.show()
             except:
                 LOG.error("couldn't plot platedmasses for treatment {}"
@@ -10485,7 +10524,7 @@ class QTLs(DBTable,InMemory):
                                 folder)
         for headers,qtldict in FN(GS,stoplevel=len(groupby)-1):
             title="{}_{}_{}".format(self.dbasenameroot,*headers)
-            savepath=os.path.join(folderpath,title+".jpg")
+            savepath=os.path.join(folderpath,title+"."+Locations.graphicstype)
             
             xs,ys,cs=[],[],[]
             ms,mcs=[],[]
@@ -10569,8 +10608,9 @@ class FeatureSet(object):
             ys.append(y)
             cs.append(self.genotypegroup)
             if xs:
-                title="{}_{}.jpg".format(self.controlledexperiment.dbasenameroot,
-                                         self.treatment)
+                title="{}_{}.{}".format(self.controlledexperiment.dbasenameroot,
+                                        self.treatment,
+                                        Locations.graphicstype)
                 savepath=os.path.join(Locations().rootdirectory,
                                       "rQTL output",
                                       title)

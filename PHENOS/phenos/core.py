@@ -7,6 +7,8 @@ import logging,platform,ConfigParser,traceback
 from itertools import chain
 from collections import defaultdict
 #OTHER
+from matplotlib import use as mpluse
+mpluse('PS')
 import matplotlib.pyplot as pyplt
 import win32com
 
@@ -252,6 +254,9 @@ def get_config_dict():
     def splitcontrols(controlsstring):
         return [c.strip() for c in controlsstring.split(",")]
     
+    def splitnumbers(numberstring):
+        return tuple([int(n.strip()) for n in numberstring.split(",")])
+    
     output={"config_filepath":CFpth,
             "configparser":CFpars,
             "scriptdirectory":scriptdir(),
@@ -264,7 +269,12 @@ def get_config_dict():
             "user_folder":CFpars.get("Locations",
                                      "user_folder",
                                      "Test"),
-            
+            "graphicstype":CFpars.get("Graphics",
+                                      "type",
+                                      "png"),
+            "windowposition":splitnumbers(CFpars.get("GUI",
+                                                     "position",
+                                                     "800,600,0,0")),
             "controls":splitcontrols(CFpars.get("Controls",
                                                 "controls",
                                                 "YPD, YPD 30C, "
