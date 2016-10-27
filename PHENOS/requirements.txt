@@ -1,1 +1,16 @@
+xlrd
+brewer2mpl
+Cython
+numpy
+numexpr
+urllib3
+six
+h5py
+tables
+scipy
+pytz
+dateutil
+cycler
+pyparsing
 matplotlib
+biopython
