@@ -7541,12 +7541,13 @@ class CombiFile(DBRecord,GraphicGenerator):
             tmspn=newtimepoints[-1]-newtimepoints[0]
         else:
             tmspn=None
-
+        iscontr=False
         for readset in parallelreadings:
             pp=readset[0]["plateposition"]
             readinggroup=readset[0]["readinggroup"].value
             treatment=readset[0]["treatment"].value
-            iscontr=True if treatment in IsControl.treatments else False
+            if treatment in IsControl.treatments:
+                iscontr=True
             experimentid=readset[0]["experimentid"].value
 
             newmeasures=[]
@@ -9440,7 +9441,7 @@ class IsBlank(DBBool):
             rec=self.get_record()
             if rec is False: return False
             
-            self.set_value(rec["strainid"].value in ['b','','-'])
+            self.set_value(rec["strainid"].value in ['b','','-',' '])
         return self.value
 
 class AliasOf(DBString):
@@ -9502,7 +9503,7 @@ class Strain(DBRecord,GraphicGenerator):
 
     def is_blank(self):
         if not self["isblank"].is_valid():
-            self["isblank"].set_value(self["strainid"].value in ['b','','-'])
+            self["isblank"].set_value(self["strainid"].value in ['b','','-',' '])
         return self["isblank"].value
 
     def genotypes(self):
@@ -10509,8 +10510,11 @@ class QTLs(DBTable,InMemory):
                     yield K,V
 
     def plot_by(self,
-                groupby=["treatment","genotypegroup","combifile"],
-                report=True):
+                groupby=["treatment","genotypegroup"],
+                #groupby=["treatment","genotypegroup","combifile"],
+                ignorephenotypesbeginningwith=["AWA"],
+                report=True,
+                **kwargs):
         """
         Each level of groupby gets a separate plot,
         except the final groupby which is separately coloured
@@ -10518,22 +10522,31 @@ class QTLs(DBTable,InMemory):
         counter=0
         GS=self.get_sets(groupby=groupby,report=False)
         FN=self.yield_nested_dict_breakdown
-        folder="QTL plots by {}".format(",".join(groupby))
+        DBNR=self.dbasenameroot
+        folder="{}_QTL plots by {}".format(DBNR,",".join(groupby))
         folderpath=os.path.join(Locations().rootdirectory,
                                 "rQTL output",
                                 folder)
+        extension=kwargs.get("extension",Locations.graphicstype)
         for headers,qtldict in FN(GS,stoplevel=len(groupby)-1):
-            title="{}_{}_{}".format(self.dbasenameroot,*headers)
-            savepath=os.path.join(folderpath,title+"."+Locations.graphicstype)
+            titleformat="_".join(["{}" for r in range(len(headers)+1)])
+            title=titleformat.format(self.dbasenameroot,*headers)
+            savepath=os.path.join(folderpath,title+"."+extension)
             
             xs,ys,cs=[],[],[]
             ms,mcs=[],[]
             markercount=0
             for groupname,qtllist in qtldict.items():
+                qtllist2=[]
+                for ignore in ignorephenotypesbeginningwith:
+                    for q in qtllist:
+                        if not q["phenotypecolumn"].value.startswith(ignore):
+                            qtllist2.append(q)
+                    qtllist=qtllist2
+                if not qtllist:
+                    continue
                 qset=FeatureSet(qtllist)
-                if groupname is None:
-                    #print qset.are_points()
-                    groupname='n/a'
+                if qset.are_points():
                     MXYS=qset.generate_markerxys()
                     ms+=MXYS
                     mcs+=[str(markercount)]*len(MXYS)
@@ -10554,6 +10567,7 @@ class QTLs(DBTable,InMemory):
                 CurvePlot(timevalues=ys, #xvalues
                           measurements=xs, #yvalues
                           colorvalues=cs,
+                          extension=extension,
                           extramarkers=ms,
                           extramarkercolorvalues=mcs,
                           ybounds=(0,15),
@@ -10562,6 +10576,8 @@ class QTLs(DBTable,InMemory):
                           xgridlines=get_chrcumulative().values(),
                           xaxislabel="bp",
                           title=title,
+                          legendloc='upper center',
+                          legendcol=6,
                           savepath=savepath,
                           show=False)
 
@@ -10910,6 +10926,52 @@ def read_qtl_digest(path=None,store=True):
     return tostore
 #
 
+def plot_features(featurenamelist,colorlist=None):
+    extension=Locations.graphicstype
+    order=[] #[chr,start,ys,xs,cols,lbs]
+    #ys,xs,cols,lbs=[],[],[],[]
+    for fn,cn in zip(featurenamelist,colorlist):
+        featurelist=Features().query_by_kwargs(gene=fn)
+        if not featurelist:
+            continue
+        FS=FeatureSet(featurelist)
+        y,x=FS.generate_xys()
+        x2=[]
+        for xv in x:
+            if str(xv)=='nan':
+                x2.append(0.5)
+            else:
+                x2.append(xv)
+        order.append([featurelist[0]["chromosome"].value,
+                      featurelist[0]["featurestart"].value,
+                      list(y),
+                      x2,
+                      cn,
+                      featurelist[0]["gene"].value])
+    order.sort()
+    ys,xs,cols,lbs=[],[],[],[]
+    for o in order:
+        print o[0],o[1],o[5]
+        ys.append(o[2])
+        xs.append(o[3])
+        cols.append(o[4])
+        lbs.append(o[5])
+
+    cp=CurvePlot(timevalues=ys, #xvalues
+                 measurements=xs, #yvalues
+                 colorvalues=cols,
+                 labels=lbs,
+                 extension=extension,
+                 ybounds=(0,1),
+                 xbounds=(0,12071326),
+                 yaxislabel="",
+                 xgridlines=get_chrcumulative().values(),
+                 xaxislabel="bp",
+                 title=str(lbs),
+                 legendloc='upper center',
+                 savepath=None,
+                 show=True)
+
 #AUTOCURATOR ##################################################################
 class Autocurator(object):
     def __init__(self):
@@ -10979,9 +11041,21 @@ class Autocurator(object):
 
 #MAIN #########################################################################
 if __name__=='__main__':
-    setup_logging("CRITICAL")
+    setup_logging("INFO")
     sys.excepthook=log_uncaught_exceptions
 
-    Locations().change("Test")
+    #QTLs().plot_by()
+    #Locations().change("Test")
     #import doctest
     #doctest.testmod()
+    CombiFiles()[-1].draw_plated(show=True,overwrite=True,
+                                 radiusbounds=(-2,4))
+
+    #Data from http://www.yeastgenome.org/search?q=paraquat&is_quick=true
+#    paraquatresistancedecreased=['CCS1','FRS2','IRA2','NAR1','POS5','PUT1','RNR4','SOD1','SOD2','UTH1']
+#    paraquatresistanceincreased=['PUT1','TPO1']
+#    paraquatresistancenormal=['CCS1','SOD1']
+#    feats=['CCS1','FRS2','IRA2','NAR1','POS5','PUT1','RNR4','SOD1','SOD2','UTH1','TPO1']
+#    cols=['black','red','red','red','red','black','red','black','red','red','green']
+    #plot_features(feats,cols)
+    #

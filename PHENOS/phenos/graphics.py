@@ -817,6 +817,7 @@ class PlateView(object):
                  flagvalues=None,
                  legendlabel='',
                  legendloc='lower right',
+                 legendcol=None,
                  legendfontsize=7,
                  legendfontcolor='black',
                  invertcolorbar=False,
@@ -1097,11 +1098,17 @@ class PlateView(object):
                 #not working:
                 #pyplt.subplot(122)
                 #cbaxes = self.figure.add_axes([0.85, 0.15, 0.01, 0.25])
+                ncol=getattr(self,"legendcol",None)
+                extrakwargs={}
+                if ncol: extrakwargs["ncol"]=ncol
+
                 pyplt.legend(hs,ks,
                              #bbox_to_anchor=(1, 1),
                              #bbox_transform=pyplt.gcf().transFigure,
                              title=self.legendlabel,
-                             frameon=False, loc=self.legendloc)
+                             frameon=False,
+                             loc=self.legendloc,
+                             **extrakwargs)
                 return
 
     def blank_canvas(self):
@@ -1170,6 +1177,7 @@ class PlateAnimation(PlateView):
                  labeldepth=0.0,
                  legendlabel='',
                  legendloc='lower right',
+                 legendcol=None,
                  legendfontsize=7,
                  legendfontcolor='black',
                  invertcolorbar=False,
@@ -1354,6 +1362,7 @@ class CurvePlot(PlateView):
                  labelbandheight=0.5,
                  legendlabel='',
                  legendloc='lower right',
+                 legendcol=None,
                  legendfontsize=7,
                  legendfontcolor='black',
                  invertcolorbar=False,
@@ -1578,6 +1587,7 @@ class Histogram(PlateView):
                  labelbandheight=0.5,
                  legendlabel='',
                  legendloc='lower right',
+                 legendcol=None,
                  legendfontsize=7,
                  legendfontcolor='black',
                  invertcolorbar=False,
@@ -1675,6 +1685,7 @@ class Scatterplot(PlateView):
                  labelbandheight=0.5,
                  legendlabel='',
                  legendloc=[0.9, 0.09, 0.01, 0.25],
+                 legendcol=None,
                  legendfontsize=7,
                  legendfontcolor='black',
                  invertcolorbar=False,
@@ -1751,17 +1762,18 @@ def plateview_emptyOLD(combifileob,
     if savepath or kwargs.get("overwrite",False):
         recs=list(combifileob.yield_records())
         CV=[cr["emptymeasure"].value for cr in recs]
-        kwargs.update(dict(coords=combifileob.get_coords(),
-                           radiusbounds=(0,combifileob["platedx"].value),
-                           colorvalues=CV,
-                           colorvaluebounds=(0.2,0.3),
-                           legendlabel='emptymeasure',
-                           colorscheme="Oranges",
-                           colorschemebounds=(0.3,0.7),
-                           labels=[cr["wellname"].value for cr in recs],
-                           title=combifileob.get_graphicstitle(**kwargs),
-                           savepath=savepath))
-        return PlateView(**kwargs)
+        kwargs2=dict(coords=combifileob.get_coords(),
+                     radiusbounds=(0,combifileob["platedx"].value),
+                     colorvalues=CV,
+                     colorvaluebounds=(0.2,0.3),
+                     legendlabel='emptymeasure',
+                     colorscheme="Oranges",
+                     colorschemebounds=(0.3,0.7),
+                     labels=[cr["wellname"].value for cr in recs],
+                     title=combifileob.get_graphicstitle(**kwargs),
+                     savepath=savepath)
+        kwargs2.update(kwargs)
+        return PlateView(**kwargs2)
 
 def plateview_emptylocalOLD(combifileob,
                          prefix="1b_EmptyPlate",
@@ -1774,16 +1786,17 @@ def plateview_emptylocalOLD(combifileob,
     if savepath or kwargs.get("overwrite",False):
         recs=list(combifileob.yield_records())
         CV=[cr["emptymeasure"].value for cr in recs]
-        kwargs.update(dict(coords=combifileob.get_coords(),
-                           radiusbounds=(0,combifileob["platedx"].value),
-                           colorvalues=CV,
-                           legendlabel='emptymeasure',
-                           colorscheme="Oranges",
-                           colorschemebounds=(0.3,0.7),
-                           labels=[cr["wellname"].value for cr in recs],
-                           title=combifileob.get_graphicstitle(**kwargs),
-                           savepath=savepath))
-        return PlateView(**kwargs)
+        kwargs2=dict(coords=combifileob.get_coords(),
+                     radiusbounds=(0,combifileob["platedx"].value),
+                     colorvalues=CV,
+                     legendlabel='emptymeasure',
+                     colorscheme="Oranges",
+                     colorschemebounds=(0.3,0.7),
+                     labels=[cr["wellname"].value for cr in recs],
+                     title=combifileob.get_graphicstitle(**kwargs),
+                     savepath=savepath)
+        kwargs2.update(kwargs)
+        return PlateView(**kwargs2)
 
 def plateview_platedOLD(combifileob,
                      prefix="2_PrintingQuality",
@@ -1797,18 +1810,19 @@ def plateview_platedOLD(combifileob,
     if savepath or kwargs.get("overwrite",False):
         recs=list(combifileob.yield_records())
         PMV=[cr["platedmass"].value for cr in recs]
-        kwargs.update(dict(coords=combifileob.get_coords(),
-                           scalevalues=PMV,
-                           scalevaluebounds=(0,1.0),
-                           radiusbounds=(0,combifileob["platedx"].value/2.0),
-                           colorvalues=PMV,
-                           legendlabel='platedmass local min-max',
-                           labels=[cr["strain"].value for cr in recs],
-                           labelfontalpha=0.75,
-                           labeldepth=1.2,
-                           title=combifileob.get_graphicstitle(**kwargs),
-                           savepath=savepath))
-        return PlateView(**kwargs)
+        kwargs2=dict(coords=combifileob.get_coords(),
+                     scalevalues=PMV,
+                     scalevaluebounds=(0,1.0),
+                     radiusbounds=(0,combifileob["platedx"].value/2.0),
+                     colorvalues=PMV,
+                     legendlabel='platedmass local min-max',
+                     labels=[cr["strain"].value for cr in recs],
+                     labelfontalpha=0.75,
+                     labeldepth=1.2,
+                     title=combifileob.get_graphicstitle(**kwargs),
+                     savepath=savepath)
+        kwargs2.update(kwargs)
+        return PlateView(**kwargs2)
 #
 def plateview_plate(plateob,
                     show=True,
@@ -1819,17 +1833,18 @@ def plateview_plate(plateob,
 
     if savepath or kwargs.get("overwrite",False):
         recs=list(plateob.yield_records())
-        kwargs.update(dict(coords=plateob.get_coords(),
-                           scalevalues=None,
-                           colorvalues=None,
-                           legendlabel='emptymeasure',
-                           labels=[cr["wellname"].value for cr in recs],
-                           labelfontsize=8,
-                           labelfontcolor='black',
-                           backgroundcolor='white',
-                           title=plateob.get_graphicstitle(**kwargs),
-                           savepath=savepath))
-        return PlateView(**kwargs)
+        kwargs2=dict(coords=plateob.get_coords(),
+                     scalevalues=None,
+                     colorvalues=None,
+                     legendlabel='emptymeasure',
+                     labels=[cr["wellname"].value for cr in recs],
+                     labelfontsize=8,
+                     labelfontcolor='black',
+                     backgroundcolor='white',
+                     title=plateob.get_graphicstitle(**kwargs),
+                     savepath=savepath)
+        kwargs2.update(kwargs)
+        return PlateView(**kwargs2)
 
 def plateview_layout(platelayoutob,
                      **kwargs):
@@ -1838,15 +1853,16 @@ def plateview_layout(platelayoutob,
 
     if savepath or kwargs.get("overwrite",False):
         recs=list(platelayoutob.yield_records())
-        kwargs.update(dict(coords=platelayoutob.get_coords(),
-                           scalevalues=None,
-                           colorvalues=None,
-                           legendlabel='emptymeasure',
-                           labels=[cr["strain"].value for cr in recs],
-                           labelfontsize=8,
-                           title=platelayoutob.get_graphicstitle(**kwargs),
-                           savepath=savepath))
-        return PlateView(**kwargs)
+        kwargs2=dict(coords=platelayoutob.get_coords(),
+                     scalevalues=None,
+                     colorvalues=None,
+                     legendlabel='emptymeasure',
+                     labels=[cr["strain"].value for cr in recs],
+                     labelfontsize=8,
+                     title=platelayoutob.get_graphicstitle(**kwargs),
+                     savepath=savepath)
+        kwargs2.update(kwargs)
+        return PlateView(**kwargs2)
 #
 def plateview_empty(combifileob,
                     prefix="1_EmptyPlate",
@@ -1860,20 +1876,21 @@ def plateview_empty(combifileob,
         recs=list(combifileob.yield_records())
         CV=[cr["emptymeasure"].value for cr in recs]
         maxrad=combifileob["platedx"].value/2.2
-        kwargs.update(dict(coords=combifileob.get_coords(),
-                           scalevalues=CV,
-                           icon="square",
-                           radiusbounds=(maxrad/2,maxrad),
-                           colorvalues=CV,
-                           colorvaluebounds=(0.1,0.5),
-                           legendlabel='emptymeasure',
-                           colorscheme="Oranges",
-                           colorschemebounds=(0.2,0.8),
-                           labels=[cr["wellname"].value for cr in recs],
-                           labelfontsize=8,
-                           title=combifileob.get_graphicstitle(**kwargs),
-                           savepath=savepath))
-        return PlateView(**kwargs)
+        kwargs2=dict(coords=combifileob.get_coords(),
+                     scalevalues=CV,
+                     icon="square",
+                     radiusbounds=(maxrad/2,maxrad),
+                     colorvalues=CV,
+                     colorvaluebounds=(0.1,0.5),
+                     legendlabel='emptymeasure',
+                     colorscheme="Oranges",
+                     colorschemebounds=(0.2,0.8),
+                     labels=[cr["wellname"].value for cr in recs],
+                     labelfontsize=8,
+                     title=combifileob.get_graphicstitle(**kwargs),
+                     savepath=savepath)
+        kwargs2.update(kwargs)
+        return PlateView(**kwargs2)
 
 def plateview_plated(combifileob,
                      prefix="2_PrintingQuality",
@@ -1887,21 +1904,22 @@ def plateview_plated(combifileob,
     if savepath or kwargs.get("overwrite",False):
         recs=list(combifileob.yield_records())
         PMV=[cr["platedmass"].value for cr in recs]
-        kwargs.update(dict(coords=combifileob.get_coords(),
-                           scalevalues=PMV,
-                           radiusbounds=(0,combifileob["platedx"].value/2.0),
-                           colorvalues=PMV,
-                           colorvaluebounds=(0,0.6),
-                           colorschemebounds=(1.0,0.0),
-                           invertcolorbar=True,
-                           legendlabel='platedmass',
-                           labels=[cr["strain"].value for cr in recs],
-                           labelfontsize=6,
-                           labelfontalpha=0.75,
-                           labeldepth=1.2,
-                           title=combifileob.get_graphicstitle(**kwargs),
-                           savepath=savepath))
-        return PlateView(**kwargs)
+        kwargs2=dict(coords=combifileob.get_coords(),
+                     scalevalues=PMV,
+                     radiusbounds=(0,combifileob["platedx"].value/2.0),
+                     colorvalues=PMV,
+                     colorvaluebounds=(0,0.6),
+                     colorschemebounds=(1.0,0.0),
+                     invertcolorbar=True,
+                     legendlabel='platedmass',
+                     labels=[cr["strain"].value for cr in recs],
+                     labelfontsize=6,
+                     labelfontalpha=0.75,
+                     labeldepth=1.2,
+                     title=combifileob.get_graphicstitle(**kwargs),
+                     savepath=savepath)
+        kwargs2.update(kwargs)
+        return PlateView(**kwargs2)
 
 def plateview_final(combifileob,
                     prefix="3_FinalGrowth",
@@ -1913,16 +1931,16 @@ def plateview_final(combifileob,
 
     if savepath or kwargs.get("overwrite",False):
         recs=list(combifileob.yield_records())
-        kwargs.update(dict(coords=combifileob.get_coords(),
-                           scalevalues=[cr["maximumwithoutagar"]
-                                        for cr in recs],
-                           radiusbounds=(0,combifileob["platedx"].value/2.0),
-                           scalevaluebounds=(0,5.0),
-                           colorvalues='white',
-                           flagvalues=[cr.should_ignore() for cr in recs],
-                           title=combifileob.get_graphicstitle(**kwargs),
-                           savepath=savepath))
-        return PlateView(**kwargs)
+        kwargs2=dict(coords=combifileob.get_coords(),
+                     scalevalues=[cr["maximumwithoutagar"] for cr in recs],
+                     radiusbounds=(0,combifileob["platedx"].value/2.0),
+                     scalevaluebounds=(0,5.0),
+                     colorvalues='white',
+                     flagvalues=[cr.should_ignore() for cr in recs],
+                     title=combifileob.get_graphicstitle(**kwargs),
+                     savepath=savepath)
+        kwargs2.update(kwargs)
+        return PlateView(**kwargs2)
 
 def plateview_mixed(combifileob,
                     prefix="3_FinalGrowth",
@@ -1935,16 +1953,17 @@ def plateview_mixed(combifileob,
 
     if savepath or kwargs.get("overwrite",False):
         recs=list(combifileob.yield_records())
-        kwargs.update(dict(coords=combifileob.get_coords(),
-                           scalevalues=[cr["maximumwithoutagar"] for cr in recs],
-                           radiusbounds=(0,combifileob["platedx"].value/2.0),
-                           scalevaluebounds=(0,5.0),
-                           colorvalues=[cr["platedmass"].value for cr in recs],
-                           colorscheme="rainbow",
-                           legendlabel='platedmass',
-                           title=combifileob.get_graphicstitle(**kwargs),
-                           savepath=savepath))
-        return PlateView(**kwargs)
+        kwargs2=dict(coords=combifileob.get_coords(),
+                     scalevalues=[cr["maximumwithoutagar"] for cr in recs],
+                     radiusbounds=(0,combifileob["platedx"].value/2.0),
+                     scalevaluebounds=(0,5.0),
+                     colorvalues=[cr["platedmass"].value for cr in recs],
+                     colorscheme="rainbow",
+                     legendlabel='platedmass',
+                     title=combifileob.get_graphicstitle(**kwargs),
+                     savepath=savepath)
+        kwargs2.update(kwargs)
+        return PlateView(**kwargs2)
 
 def plateview_experimentratios(controlexpob,
                                prefix="9_ControlledRatios",
@@ -1959,21 +1978,22 @@ def plateview_experimentratios(controlexpob,
 
     if savepath or kwargs.get("overwrite",False):
         recs=list(controlexpob.yield_records())
-        kwargs.update(dict(coords=controlexpob.get_coords(),
-                           scalevalues=[cr["finalaverage"].value for cr in recs],
-                           radiusbounds=(0.5,controlexpob["platedx"].value/2.0),
-                           scalevaluebounds=(0,3.0),
-                           colorvalues=[cr["ratio"].value for cr in recs],
-                           colorscheme="RdYlGn",
-                           colorvaluebounds=(0.0,1.5), #fixed color scale
-                           colorschemebounds=(0.0,1.0),
-                           legendlabel='growth ratio (treatment/control)',
-                           labels=[cr["strain"].value for cr in recs],
-                           labelfontsize=8,
-                           labelfontcolor='CadetBlue',
-                           title=controlexpob.get_graphicstitle(**kwargs),
-                           savepath=savepath))
-        return PlateView(**kwargs)
+        kwargs2=dict(coords=controlexpob.get_coords(),
+                     scalevalues=[cr["finalaverage"].value for cr in recs],
+                     radiusbounds=(0.5,controlexpob["platedx"].value/2.0),
+                     scalevaluebounds=(0,3.0),
+                     colorvalues=[cr["ratio"].value for cr in recs],
+                     colorscheme="RdYlGn",
+                     colorvaluebounds=(0.0,1.5), #fixed color scale
+                     colorschemebounds=(0.0,1.0),
+                     legendlabel='growth ratio (treatment/control)',
+                     labels=[cr["strain"].value for cr in recs],
+                     labelfontsize=8,
+                     labelfontcolor='CadetBlue',
+                     title=controlexpob.get_graphicstitle(**kwargs),
+                     savepath=savepath)
+        kwargs2.update(kwargs)
+        return PlateView(**kwargs2)
 #
 def plateanimate_basic(combifileob,
                        prefix="4_Animation",
@@ -1986,24 +2006,24 @@ def plateanimate_basic(combifileob,
 
     if savepath or kwargs.get("overwrite",False):
         recs=list(combifileob.yield_records())
-        kwargs.update(dict(coords=combifileob.get_coords(),
-                           labels=[cr["strain"].value for cr in recs],
-                           labelframes=40,
-                           scaleseries=[cr["rawmeasuredvaluesminusagar"]
-                                         for cr in recs],
-                           colorseries='white',
-                           finalframes=30,
-                           timeseries=combifileob.timevalues(),
-
-                           xbounds=(0,127.76),    #standard plate breadth
-                           ybounds=(0,85.48),     #standard plate width
-                           radiusbounds=(0,2.25), #standard 384 maxradius
-                           colorscheme="RdBu",
-                           colorschemebounds=(1.0,0.0),
-                           legendlabel='Temperature (C)',
-                           title=combifileob.get_graphicstitle(**kwargs),
-                           savepath=savepath))
-        return PlateAnimation(**kwargs)
+        kwargs2=dict(coords=combifileob.get_coords(),
+                     labels=[cr["strain"].value for cr in recs],
+                     labelframes=40,
+                     scaleseries=[cr["rawmeasuredvaluesminusagar"]
+                                  for cr in recs],
+                     colorseries='white',
+                     finalframes=30,
+                     timeseries=combifileob.timevalues(),
+                     xbounds=(0,127.76),    #standard plate breadth
+                     ybounds=(0,85.48),     #standard plate width
+                     radiusbounds=(0,2.25), #standard 384 maxradius
+                     colorscheme="RdBu",
+                     colorschemebounds=(1.0,0.0),
+                     legendlabel='Temperature (C)',
+                     title=combifileob.get_graphicstitle(**kwargs),
+                     savepath=savepath)
+        kwargs2.update(kwargs)
+        return PlateAnimation(**kwargs2)
 
 def plateanimate_temp(combifileob,
                       prefix="4_Animation",
@@ -2017,25 +2037,25 @@ def plateanimate_temp(combifileob,
 
     if savepath or kwargs.get("overwrite",False):
         recs=list(combifileob.yield_records())
-        kwargs.update(dict(coords=combifileob.get_coords(),
-                           labels=[cr["strain"].value for cr in recs],
-                           labelframes=40,
-                           scaleseries=[cr["rawmeasuredvaluesminusagar"]
-                                         for cr in recs],
-                           colorseries=combifileob.tempvalues() or 'white',
-                           colorvaluebounds=(25.0,35.0),
-                           finalframes=30,
-                           timeseries=combifileob.timevalues(),
-
-                           xbounds=(0,127.76),    #standard plate breadth
-                           ybounds=(0,85.48),     #standard plate width
-                           radiusbounds=(0,2.25), #standard 384 maxradius
-                           colorscheme="RdBu",
-                           colorschemebounds=(1.0,0.0),
-                           legendlabel='Temperature (C)',
-                           title=combifileob.get_graphicstitle(**kwargs),
-                           savepath=savepath))
-        return PlateAnimation(**kwargs)
+        kwargs2=dict(coords=combifileob.get_coords(),
+                     labels=[cr["strain"].value for cr in recs],
+                     labelframes=40,
+                     scaleseries=[cr["rawmeasuredvaluesminusagar"]
+                                  for cr in recs],
+                     colorseries=combifileob.tempvalues() or 'white',
+                     colorvaluebounds=(25.0,35.0),
+                     finalframes=30,
+                     timeseries=combifileob.timevalues(),
+                     xbounds=(0,127.76),    #standard plate breadth
+                     ybounds=(0,85.48),     #standard plate width
+                     radiusbounds=(0,2.25), #standard 384 maxradius
+                     colorscheme="RdBu",
+                     colorschemebounds=(1.0,0.0),
+                     legendlabel='Temperature (C)',
+                     title=combifileob.get_graphicstitle(**kwargs),
+                     savepath=savepath)
+        kwargs2.update(kwargs)
+        return PlateAnimation(**kwargs2)
 #
 def curveplot_basic(combifileob,
                     prefix="5_Curves",
@@ -2047,19 +2067,20 @@ def curveplot_basic(combifileob,
 
     if savepath or kwargs.get("overwrite",False):
         recs=list(combifileob.yield_records())
-        kwargs.update(dict(timevalues=combifileob.timevalues(),
-                           measurements=[cr["rawmeasuredvaluesminusagar"]
-                                         for cr in recs],
-                           yaxislabel='OD600 minus agar',
-                           colorvalues=[cr["platedmass"].value
-                                        for cr in recs],
-                           colorvaluebounds=(0.0,0.6),
-                           colorschemebounds=(1.0,0.0),
-                           invertcolorbar=True,
-                           legendlabel='platedmass',
-                           title=combifileob.get_graphicstitle(**kwargs),
-                           savepath=savepath))
-        return CurvePlot(**kwargs)
+        kwargs2=dict(timevalues=combifileob.timevalues(),
+                     measurements=[cr["rawmeasuredvaluesminusagar"]
+                                   for cr in recs],
+                     yaxislabel='OD600 minus agar',
+                     colorvalues=[cr["platedmass"].value
+                                  for cr in recs],
+                     colorvaluebounds=(0.0,0.6),
+                     colorschemebounds=(1.0,0.0),
+                     invertcolorbar=True,
+                     legendlabel='platedmass',
+                     title=combifileob.get_graphicstitle(**kwargs),
+                     savepath=savepath)
+        kwargs2.update(kwargs)
+        return CurvePlot(**kwargs2)
 
 def curveplot_grouped(combifileob,
                       prefix="5_Curves",
@@ -2071,16 +2092,17 @@ def curveplot_grouped(combifileob,
 
     if savepath or kwargs.get("overwrite",False):
         recs=list(combifileob.yield_records())
-        kwargs.update(dict(timevalues=combifileob.timevalues(),
-                           measurements=[cr["rawmeasuredvaluesminusagar"]
-                                         for cr in recs],
-                           yaxislabel='OD600 minus agar',
-                           colorvalues=[cr["readinggroup"].value
-                                        for cr in recs],
-                           legendlabel='readinggroup',
-                           title=combifileob.get_graphicstitle(**kwargs),
-                           savepath=savepath))
-        return CurvePlot(**kwargs)
+        kwargs2=dict(timevalues=combifileob.timevalues(),
+                     measurements=[cr["rawmeasuredvaluesminusagar"]
+                                   for cr in recs],
+                     yaxislabel='OD600 minus agar',
+                     colorvalues=[cr["readinggroup"].value
+                                  for cr in recs],
+                     legendlabel='readinggroup',
+                     title=combifileob.get_graphicstitle(**kwargs),
+                     savepath=savepath)
+        kwargs2.update(kwargs)
+        return CurvePlot(**kwargs2)
 
 def curveplot_normalized(combifileob,
                          prefix="6_Curves",
@@ -2092,19 +2114,20 @@ def curveplot_normalized(combifileob,
 
     if savepath or kwargs.get("overwrite",False):
         recs=list(combifileob.yield_records())
-        kwargs.update(dict(timevalues=combifileob.timevalues(),
-                           measurements=[cr["measuredvalues"]
-                                         for cr in recs],
-                           yaxislabel='change in OD600 from minimum',
-                           colorvalues=[cr["platedmass"].value
-                                        for cr in recs],
-                           colorvaluebounds=(0.0,0.6),
-                           colorschemebounds=(1.0,0.0),
-                           invertcolorbar=True,
-                           legendlabel='platedmass',
-                           title=combifileob.get_graphicstitle(**kwargs),
-                           savepath=savepath))
-        return CurvePlot(**kwargs)
+        kwargs2=dict(timevalues=combifileob.timevalues(),
+                     measurements=[cr["measuredvalues"]
+                                   for cr in recs],
+                     yaxislabel='change in OD600 from minimum',
+                     colorvalues=[cr["platedmass"].value
+                                  for cr in recs],
+                     colorvaluebounds=(0.0,0.6),
+                     colorschemebounds=(1.0,0.0),
+                     invertcolorbar=True,
+                     legendlabel='platedmass',
+                     title=combifileob.get_graphicstitle(**kwargs),
+                     savepath=savepath)
+        kwargs2.update(kwargs)
+        return CurvePlot(**kwargs2)
 
 def curveplot_allreplicates(combifileob,
                             suffix="rawmeasuredvalueswithoutagar, "
@@ -2299,17 +2322,18 @@ def histogram_basic(combifileob,
 
     if savepath or kwargs.get("overwrite",False):
         recs=list(combifileob.yield_records())
-        kwargs.update(dict(values=[rec["maximumchange"] for rec in recs],
-                           nbins=11,
-                           color='green',
-                           orientation='horizontal',
-                           xbounds=(0,2.5),
-                           ybounds=(0,3.5),  #standard measurement range
-                           yaxislabel='Maximum change in OD600',
-                           xaxislabel='n',
-                           title=combifileob.get_graphicstitle(**kwargs),
-                           savepath=savepath))
-        return Histogram(**kwargs)
+        kwargs2=dict(values=[rec["maximumchange"] for rec in recs],
+                     nbins=11,
+                     color='green',
+                     orientation='horizontal',
+                     xbounds=(0,2.5),
+                     ybounds=(0,3.5),  #standard measurement range
+                     yaxislabel='Maximum change in OD600',
+                     xaxislabel='n',
+                     title=combifileob.get_graphicstitle(**kwargs),
+                     savepath=savepath)
+        kwargs2.update(kwargs)
+        return Histogram(**kwargs2)
 #
 def scatterplot_basic(combifileob,
                       prefix="8_Scatterplot",
@@ -2326,30 +2350,31 @@ def scatterplot_basic(combifileob,
         FCV=[rec["distancefromedge"].value for rec in recs]
         #ECV=[str(rec["isborder"].value) for rec in recs]
 
-        kwargs.update(dict(xvalues=XV,
-                           yvalues=YV,
-                           scalevalues=SV,
-                           scalevaluebounds=(0,2),
-                           radiusbounds=(10,40),
-                           facecolorvalues=FCV,
-                           legendlabel='distancefromedge (mm)',
-                           #edgecolorvalues=ECV,
-                           alphavalues=1.0,
-                           colorscheme='rainbow',
-                           xbounds=(0,3.0),
-                           ybounds=(0,3.5),  #standard measurement range
-                           #colorvaluebounds=None,
-                           xaxislabel='Maximum change in OD600',
-                           yaxislabel='Maximum value without agar',
-                           title=combifileob.get_graphicstitle(**kwargs),
-                           savepath=savepath))
-        return Scatterplot(**kwargs)
+        kwargs2=dict(xvalues=XV,
+                     yvalues=YV,
+                     scalevalues=SV,
+                     scalevaluebounds=(0,2),
+                     radiusbounds=(10,40),
+                     facecolorvalues=FCV,
+                     legendlabel='distancefromedge (mm)',
+                     #edgecolorvalues=ECV,
+                     alphavalues=1.0,
+                     colorscheme='rainbow',
+                     xbounds=(0,3.0),
+                     ybounds=(0,3.5),  #standard measurement range
+                     #colorvaluebounds=None,
+                     xaxislabel='Maximum change in OD600',
+                     yaxislabel='Maximum value without agar',
+                     title=combifileob.get_graphicstitle(**kwargs),
+                     savepath=savepath)
+        kwargs2.update(kwargs)
+        return Scatterplot(**kwargs2)
 #
 if __name__=="__main__":
     setup_logging("CRITICAL")
     sys.excepthook=log_uncaught_exceptions
     
-    from dbtypes import *
+    #from dbtypes import *
 
     import doctest
     doctest.testmod()
