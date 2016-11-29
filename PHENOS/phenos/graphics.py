@@ -103,6 +103,24 @@ def scale_from_proportional(valueslist,bounds):
     lowbound,highbound=bounds
     return [((highbound-lowbound)*v) +lowbound for v in valueslist]
 
+def clip_to_limits(valueslist,floor=0,ceiling=None):
+    """
+    Clips values below floor to floor and above ceiling to ceiling
+    """
+    if ceiling is None:
+        ceiling=max(valueslist)
+    if floor is None:
+        floor=min(valueslist)
+    output=[]
+    for v in valueslist:
+        if v<floor:
+            output.append(floor)
+        elif v>ceiling:
+            output.append(ceiling)
+        else:
+            output.append(v)
+    return output
+
 def flagargs(flagslist):
     """
     creates formatting arguments to be passed to PlateView.draw_markers()
@@ -927,6 +945,7 @@ class PlateView(object):
             changeattribute=True
         if type(scalevalues) in [int,float]:
             scalevalues=[scalevalues]*self.nunits
+            
         else:
             if not tobounds:
                 if getattr(self,"scalevaluebounds",None):
@@ -1905,7 +1924,7 @@ def plateview_plated(combifileob,
         recs=list(combifileob.yield_records())
         PMV=[cr["platedmass"].value for cr in recs]
         kwargs2=dict(coords=combifileob.get_coords(),
-                     scalevalues=PMV,
+                     scalevalues=clip_to_limits(PMV,floor=0),
                      radiusbounds=(0,combifileob["platedx"].value/2.0),
                      colorvalues=PMV,
                      colorvaluebounds=(0,0.6),
@@ -2374,10 +2393,11 @@ if __name__=="__main__":
     setup_logging("CRITICAL")
     sys.excepthook=log_uncaught_exceptions
     
-    #from dbtypes import *
+    from dbtypes import *
 
     import doctest
     doctest.testmod()
+
 
 #    cf=CombiFiles()[-1]
 #    curveplot_allreplicates(cf)

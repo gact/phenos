@@ -11048,8 +11048,8 @@ if __name__=='__main__':
     #Locations().change("Test")
     #import doctest
     #doctest.testmod()
-    CombiFiles()[-1].draw_plated(show=True,overwrite=True,
-                                 radiusbounds=(-2,4))
+    CombiFiles()[-1].draw_plated(show=True,overwrite=True)#,
+                                 #radiusbounds=(-2,4))
 
     #Data from http://www.yeastgenome.org/search?q=paraquat&is_quick=true
 #    paraquatresistancedecreased=['CCS1','FRS2','IRA2','NAR1','POS5','PUT1','RNR4','SOD1','SOD2','UTH1']
