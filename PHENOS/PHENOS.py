@@ -1205,7 +1205,9 @@ def main_rename():
     if not handle_file(MAINDICT): return
     
     #NOW WHAT?
-    lastrenamedfile=MAINDICT["renamedfileobject"]
+    lastrenamedfile=MAINDICT.get("renamedfileobject",None)
+    if not lastrenamedfile:
+        return
     renamedfilename=lastrenamedfile["renamedfilename"].value
     lastfile=MAINDICT["fileobject"]
 
@@ -1665,6 +1667,7 @@ def delete_controlledexperiments(controlledexperiments,checkboxes=True):
             delete_controlledexperiments(cec,checkboxes=False)
     return True
 
+#
 def main_rqtl():
     CE=ControlledExperiments()
     AlreadyExs=list(CE)
@@ -1852,8 +1855,8 @@ def main_rqtl():
                 root.geometry(windowposition)
                 root.mainloop()
                 TIMEFOCUS=EB3.value
-                if TIMEFOCUS is None:
-                    continue
+                if TIMEFOCUS in [None,""]:
+                    return
                 PLUSMINUS=0.5
                 if "+-" in TIMEFOCUS:
                     TIMEFOCUS,PLUSMINUS=TIMEFOCUS.split("+-")
