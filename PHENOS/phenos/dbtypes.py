@@ -1083,7 +1083,7 @@ class _CsvReader(_FileReader):
                       .format(self.filepath))
             return
         try:
-            fileob=open(self.filepath,"rb")
+            fileob=open(self.filepath,"rU")
             reader=csv.reader(fileob,delimiter=self.delimiter)
             self.contents=[row for row in reader]
             fileob.close()
@@ -11044,12 +11044,8 @@ if __name__=='__main__':
     setup_logging("INFO")
     sys.excepthook=log_uncaught_exceptions
 
-    #QTLs().plot_by()
-    #Locations().change("Test")
-    #import doctest
-    #doctest.testmod()
-    CombiFiles()[-1].draw_plated(show=True,overwrite=True)#,
-                                 #radiusbounds=(-2,4))
+    import doctest
+    doctest.testmod()
 
     #Data from http://www.yeastgenome.org/search?q=paraquat&is_quick=true
 #    paraquatresistancedecreased=['CCS1','FRS2','IRA2','NAR1','POS5','PUT1','RNR4','SOD1','SOD2','UTH1']
