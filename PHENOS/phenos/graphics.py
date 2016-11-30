@@ -13,6 +13,7 @@ from matplotlib import animation,colors,patches,ticker
 import matplotlib.cm as clrmap
 import matplotlib.pyplot as pyplt
 import matplotlib.pylab as pylab
+import gc
 from scipy.stats import norm
 #phenos
 from core import LOG,setup_logging,log_uncaught_exceptions,flatten,filterdict,get_traceback,get_config_dict
@@ -1792,7 +1793,11 @@ def plateview_emptyOLD(combifileob,
                      title=combifileob.get_graphicstitle(**kwargs),
                      savepath=savepath)
         kwargs2.update(kwargs)
-        return PlateView(**kwargs2)
+        try:
+            pv=PlateView(**kwargs2)
+            return True
+        except Exception as e:
+            return False
 
 def plateview_emptylocalOLD(combifileob,
                          prefix="1b_EmptyPlate",
@@ -1815,7 +1820,11 @@ def plateview_emptylocalOLD(combifileob,
                      title=combifileob.get_graphicstitle(**kwargs),
                      savepath=savepath)
         kwargs2.update(kwargs)
-        return PlateView(**kwargs2)
+        try:
+            pv=PlateView(**kwargs2)
+            return True
+        except Exception as e:
+            return False
 
 def plateview_platedOLD(combifileob,
                      prefix="2_PrintingQuality",
@@ -1841,7 +1850,11 @@ def plateview_platedOLD(combifileob,
                      title=combifileob.get_graphicstitle(**kwargs),
                      savepath=savepath)
         kwargs2.update(kwargs)
-        return PlateView(**kwargs2)
+        try:
+            pv=PlateView(**kwargs2)
+            return True
+        except Exception as e:
+            return False
 #
 def plateview_plate(plateob,
                     show=True,
@@ -1863,7 +1876,11 @@ def plateview_plate(plateob,
                      title=plateob.get_graphicstitle(**kwargs),
                      savepath=savepath)
         kwargs2.update(kwargs)
-        return PlateView(**kwargs2)
+        try:
+            pv=PlateView(**kwargs2)
+            return True
+        except Exception as e:
+            return False
 
 def plateview_layout(platelayoutob,
                      **kwargs):
@@ -1881,7 +1898,11 @@ def plateview_layout(platelayoutob,
                      title=platelayoutob.get_graphicstitle(**kwargs),
                      savepath=savepath)
         kwargs2.update(kwargs)
-        return PlateView(**kwargs2)
+        try:
+            pv=PlateView(**kwargs2)
+            return True
+        except Exception as e:
+            return False
 #
 def plateview_empty(combifileob,
                     prefix="1_EmptyPlate",
@@ -1909,7 +1930,11 @@ def plateview_empty(combifileob,
                      title=combifileob.get_graphicstitle(**kwargs),
                      savepath=savepath)
         kwargs2.update(kwargs)
-        return PlateView(**kwargs2)
+        try:
+            pv=PlateView(**kwargs2)
+            return True
+        except Exception as e:
+            return False
 
 def plateview_plated(combifileob,
                      prefix="2_PrintingQuality",
@@ -1938,7 +1963,11 @@ def plateview_plated(combifileob,
                      title=combifileob.get_graphicstitle(**kwargs),
                      savepath=savepath)
         kwargs2.update(kwargs)
-        return PlateView(**kwargs2)
+        try:
+            pv=PlateView(**kwargs2)
+            return True
+        except Exception as e:
+            return False
 
 def plateview_final(combifileob,
                     prefix="3_FinalGrowth",
@@ -1959,7 +1988,11 @@ def plateview_final(combifileob,
                      title=combifileob.get_graphicstitle(**kwargs),
                      savepath=savepath)
         kwargs2.update(kwargs)
-        return PlateView(**kwargs2)
+        try:
+            pv=PlateView(**kwargs2)
+            return True
+        except Exception as e:
+            return False
 
 def plateview_mixed(combifileob,
                     prefix="3_FinalGrowth",
@@ -1982,7 +2015,11 @@ def plateview_mixed(combifileob,
                      title=combifileob.get_graphicstitle(**kwargs),
                      savepath=savepath)
         kwargs2.update(kwargs)
-        return PlateView(**kwargs2)
+        try:
+            pv=PlateView(**kwargs2)
+            return True
+        except Exception as e:
+            return False
 
 def plateview_experimentratios(controlexpob,
                                prefix="9_ControlledRatios",
@@ -2012,7 +2049,11 @@ def plateview_experimentratios(controlexpob,
                      title=controlexpob.get_graphicstitle(**kwargs),
                      savepath=savepath)
         kwargs2.update(kwargs)
-        return PlateView(**kwargs2)
+        try:
+            pv=PlateView(**kwargs2)
+            return True
+        except Exception as e:
+            return False
 #
 def plateanimate_basic(combifileob,
                        prefix="4_Animation",
@@ -2042,7 +2083,11 @@ def plateanimate_basic(combifileob,
                      title=combifileob.get_graphicstitle(**kwargs),
                      savepath=savepath)
         kwargs2.update(kwargs)
-        return PlateAnimation(**kwargs2)
+        try:
+            pa=PlateAnimation(**kwargs2)
+            return True
+        except Exception as e:
+            return False
 
 def plateanimate_temp(combifileob,
                       prefix="4_Animation",
@@ -2074,7 +2119,11 @@ def plateanimate_temp(combifileob,
                      title=combifileob.get_graphicstitle(**kwargs),
                      savepath=savepath)
         kwargs2.update(kwargs)
-        return PlateAnimation(**kwargs2)
+        try:
+            pa=PlateAnimation(**kwargs2)
+            return True
+        except Exception as e:
+            return False
 #
 def curveplot_basic(combifileob,
                     prefix="5_Curves",
@@ -2099,7 +2148,11 @@ def curveplot_basic(combifileob,
                      title=combifileob.get_graphicstitle(**kwargs),
                      savepath=savepath)
         kwargs2.update(kwargs)
-        return CurvePlot(**kwargs2)
+        try:
+            cp=CurvePlot(**kwargs2)
+            return True
+        except Exception as e:
+            return False
 
 def curveplot_grouped(combifileob,
                       prefix="5_Curves",
@@ -2121,7 +2174,11 @@ def curveplot_grouped(combifileob,
                      title=combifileob.get_graphicstitle(**kwargs),
                      savepath=savepath)
         kwargs2.update(kwargs)
-        return CurvePlot(**kwargs2)
+        try:
+            cp=CurvePlot(**kwargs2)
+            return True
+        except Exception as e:
+            return False
 
 def curveplot_normalized(combifileob,
                          prefix="6_Curves",
@@ -2146,7 +2203,11 @@ def curveplot_normalized(combifileob,
                      title=combifileob.get_graphicstitle(**kwargs),
                      savepath=savepath)
         kwargs2.update(kwargs)
-        return CurvePlot(**kwargs2)
+        try:
+            cp=CurvePlot(**kwargs2)
+            return True
+        except Exception as e:
+            return False
 
 def curveplot_allreplicates(combifileob,
                             suffix="rawmeasuredvalueswithoutagar, "
@@ -2224,8 +2285,10 @@ def curveplot_allreplicates(combifileob,
             nreplicateplots+=1
             #break
         #
-    del curveplotobject
+    
     pyplt.close('all')
+    del curveplotobject
+    gc.collect()
     return nreplicateplots
 
 def curveplot_allstrains(combireadingstab,
@@ -2302,6 +2365,8 @@ def curveplot_allstrains(combireadingstab,
             curveplotobject(**ncpkwargs)
             nstrainplots+=1
     pyplt.close('all')
+    del curveplotobject
+    gc.collect()
     return nstrainplots
 
 def curveplot_strain(strainob,
@@ -2330,7 +2395,11 @@ def curveplot_strain(strainob,
                        title=strainob.get_graphicstitle(**kwargs),
                        savepath=savepath)
         ncpkwargs.update(kwargs)
-        return CurvePlot(**ncpkwargs)
+        try:
+            cp=CurvePlot(**ncpkwargs)
+            return True
+        except Exception as e:
+            return False
 
 #
 def histogram_basic(combifileob,
@@ -2352,7 +2421,11 @@ def histogram_basic(combifileob,
                      title=combifileob.get_graphicstitle(**kwargs),
                      savepath=savepath)
         kwargs2.update(kwargs)
-        return Histogram(**kwargs2)
+        try:
+            hg=Histogram(**kwargs2)
+            return True
+        except Exception as e:
+            return False
 #
 def scatterplot_basic(combifileob,
                       prefix="8_Scatterplot",
@@ -2387,7 +2460,11 @@ def scatterplot_basic(combifileob,
                      title=combifileob.get_graphicstitle(**kwargs),
                      savepath=savepath)
         kwargs2.update(kwargs)
-        return Scatterplot(**kwargs2)
+        try:
+            sp=Scatterplot(**kwargs2)
+            return True
+        except Exception as e:
+            return False
 #
 if __name__=="__main__":
     setup_logging("CRITICAL")

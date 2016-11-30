@@ -6349,6 +6349,7 @@ class ExperimentTimeStamp(DBDateTime):
 
 class Note(DBString):
     coltype=tbs.StringCol(100)
+    colclip=5
     def calculate(self):
         if not self.is_valid():
             rec=self.get_record()
@@ -6422,8 +6423,9 @@ class SurvivorStart(DBuInt8):
         return self.value
 
 class FileReader(DBString):
+    shortheader="fRd"
     coltype=tbs.StringCol(100)
-    colclip=10
+    colclip=3
 
 class NCurves(DBuInt16):
     invalid_values=[None,"-","",np.nan,float('nan'),0,0.0]
@@ -6431,6 +6433,7 @@ class NCurves(DBuInt16):
 class TimeSeries(DBSeries):
     timevalues=DBSeries._get_trimmed
     allowed_difference=0.01
+    colclip=10
 
     def __eq__(self,other):
         timepointstack=[self.timevalues(),other.timevalues()]
@@ -6444,6 +6447,8 @@ class TimeSeries(DBSeries):
 
 class TimeSpan(DBFloat32):
     invalid_values=[None,"-","",np.nan,float('nan'),0,0.0]
+    shortheader="tSpn"
+    colclip=5
     def calculate(self):
         if not self.is_valid():
             rec=self.get_record()
@@ -6463,6 +6468,8 @@ class TimeSpan(DBFloat32):
 
 class NMeasures(DBuInt16):
     invalid_values=[None,"-","",np.nan,float('nan'),0,0.0]
+    shortheader="nMe"
+    colclip=3
     def calculate(self):
         if not self.is_valid():
             rec=self.get_record()
@@ -11044,8 +11051,8 @@ if __name__=='__main__':
     setup_logging("INFO")
     sys.excepthook=log_uncaught_exceptions
 
-    import doctest
-    doctest.testmod()
+    #import doctest
+    #doctest.testmod()
 
     #Data from http://www.yeastgenome.org/search?q=paraquat&is_quick=true
 #    paraquatresistancedecreased=['CCS1','FRS2','IRA2','NAR1','POS5','PUT1','RNR4','SOD1','SOD2','UTH1']
