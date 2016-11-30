@@ -21,6 +21,7 @@ ONLINE
 
 8) Type "python setup.py install"
 
+9) For animations, download and install ImageMagick from https://www.imagemagick.org/script/binary-releases.php
 
 OFFLINE
 
@@ -51,6 +52,7 @@ If the target PC is not online, you must...
 	biopython
 For each wheel file, type "python -m pip install [full name of wheel file]"
 
+6) For animations, download, copy to the machine, and install ImageMagick from https://www.imagemagick.org/script/binary-releases.php
 
 FINAL SET-UP
 
