@@ -151,6 +151,29 @@ def choose_file_to_rename():
     if FILETORENAME:
         return {"originalfilename":FILETORENAME}
 
+def check_already_renamed(MAINDICT):
+    originalfilename=MAINDICT["originalfilename"]
+    RFNR=ReadingFileNameReader(originalfilename)
+    if RFNR.get_is_OK():
+        filepath=os.path.join(platereader_output,originalfilename)
+        MAINDICT["targetfilename"]=originalfilename
+        MAINDICT["userinitials"]=RFNR.properties.get("user",None)
+        MAINDICT["experimentnumber"]=RFNR.properties["experimentnumber"]
+        MAINDICT["fileletter"]=RFNR.properties["fileletter"]
+        MAINDICT["treatment"]=RFNR.properties["treatment"]
+        layout=MAINDICT["layout"]=RFNR.properties["layout"]
+        MAINDICT["timeoffset"]=RFNR.properties.get("timeoffset",0)
+        MAINDICT["note"]=RFNR.properties.get("note","")
+        MAINDICT["extension"]=RFNR.properties.get("extension",None)
+        MAINDICT["orientation"]=RFNR.properties.get("reorient",None)
+        MAINDICT["exclusions"]=RFNR.properties.get("flags",None)
+        MAINDICT["survivorstart"]=RFNR.properties.get("survivorstart",None)
+        MAINDICT["fileobject"]=File(filepath=filepath,
+                                    platelayout=layout)
+        MAINDICT["renamedfilename"]=originalfilename
+        return MAINDICT
+    return False
+
 def summarise_file(MAINDICT):
     filepath=os.path.join(platereader_output,
                           MAINDICT["originalfilename"])
@@ -1028,9 +1051,10 @@ def handle_file(MAINDICT):
     layout=MAINDICT["layout"]
     filepath=os.path.join(platereader_output,originalfilename)
     targetfilename=build_filetitle(**MAINDICT)
+    MAINDICT["targetfilename"]=targetfilename
     targetfilepath=os.path.join(LOCS.get_userpath(),
                                 targetfilename)
-    timeoffset=MAINDICT.get("timeoffset","t+0")
+    timeoffset=MAINDICT.setdefault("timeoffset","t+0")
     issurvivor=False
     survivorstart=None
     emptyreading=False
@@ -1059,7 +1083,12 @@ def handle_file(MAINDICT):
 
     if MAINDICT.get("orientation","")=="R":
         reorient=True
-    
+
+    MAINDICT["emptyreading"]=emptyreading
+    MAINDICT["issurvivor"]=issurvivor
+    MAINDICT["survivorstart"]=survivorstart
+    MAINDICT["reorient"]=reorient
+
     INS=("Original filename=    {}\n\n"
          "Final filename=    {}\n\n"
          "About to copy from: '{}'\n\n"
@@ -1095,114 +1124,167 @@ def handle_file(MAINDICT):
                       .format(filepath,targetfilepath,e,get_traceback()))
             return MAINDICT
         #wait for copy to complete
-        
-        #Store File object & Readings
-        fo=None
+        MAINDICT=store_fileobject(MAINDICT)
+        MAINDICT=store_renamed_file(MAINDICT)
+        return MAINDICT
+
+def store_fileobject(MAINDICT):
+    #Store File object & Readings
+    if "fileobject" not in MAINDICT:
         try:
-            fo=File(filepath=str(targetfilename),
-                    platelayout=str(layout),
-                    dbasenameroot=userfolder,
-                    timeoffset=timeoffset,
-                    reorient=reorient,
-                    emptyreading=emptyreading,
-                    issurvivor=issurvivor,
-                    survivorstart=survivorstart)
-            fo.calculate_all()
-            fo.store()
-            readingcount=fo.read()
+            fo=File(filepath=str(MAINDICT["targetfilename"]),
+                    platelayout=str(MAINDICT["layout"]),
+                    dbasenameroot=MAINDICT["userfolder"],
+                    timeoffset=MAINDICT["timeoffset"],
+                    reorient=MAINDICT["reorient"],
+                    emptyreading=MAINDICT["emptyreading"],
+                    issurvivor=MAINDICT["issurvivor"],
+                    survivorstart=MAINDICT["survivorstart"])
             MAINDICT["fileobject"]=fo
-            LOG.info("Created File({}) and added to {}"
-                     "along with {} Readings"
-                     .format(fo.value,
-                             LOCS.get_userpath(),
-                             readingcount))
         except Exception as e:
-            LOG.error("Unable to create/store File for {}"
+            LOG.error("Couldn't create fileobject from MAINDICT {} "
                       "because {} {}"
-                      .format(targetfilename,e,get_traceback()))
-            return MAINDICT
+                      .format(MAINDICT,e,get_traceback()))
 
-        if fo:
-            try:
-                LOG.info("drawing if empty")
-                PVOB=fo.draw_if_empty(show=False)
-                if PVOB:
-                    del PVOB
-                try:
-                    pyplt.close("all")
-                except:
-                    pass
-                LOG.info("drew if empty and deleted Plateview object")
-            except Exception as e:
-                LOG.error("Couldn't draw_if_empty because {} {}"
-                          .format(e,get_traceback()))
+    fo=MAINDICT["fileobject"]
+    fo.calculate_all()
+    if not fo["platelayout"].file_exists():
+        LOG.error("Layout file {} not found"
+                  .format(fo["platelayout"].value))
+        return None
+    try:
+        fo.store()
+        readingcount=fo.read()
+                
+        LOG.info("Created File({}) and added to {}"
+                 "along with {} Readings"
+                 .format(fo.value,
+                         LOCS.get_userpath(),
+                         readingcount))
+    except Exception as e:
+        LOG.error("Unable to create/store File for {} "
+                  "because {} {}"
+                  .format(MAINDICT["targetfilename"],
+                          e,get_traceback()))
+        return MAINDICT
 
-        #Store RenamedFile
+    if fo:
         try:
-            rf=RenamedFile(originalfilename=originalfilename,
-                           originalfolder=platereader_output,
-                           renamedfilename=targetfilename,
-                           renamedfolder=LOCS.get_userpath())
-            rf["datecreated"].calculate()
-            rf.store()
-            MAINDICT["renamedfileobject"]=rf
-            LOG.info("Created {}".format(rf))
-            return MAINDICT
+            LOG.info("drawing if empty")
+            PVOB=fo.draw_if_empty(show=False)
+            if PVOB:
+                del PVOB
+            try:
+                pyplt.close("all")
+            except:
+                pass
+            LOG.info("drew if empty and deleted Plateview object")
         except Exception as e:
-            LOG.error("Couldn't created RenamedFile because {} {}"
+            LOG.error("Couldn't draw_if_empty because {} {}"
                       .format(e,get_traceback()))
-            return MAINDICT
+    return MAINDICT
 
+def store_renamed_file(MAINDICT):
+    #Store RenamedFile
+    try:
+        rf=RenamedFile(originalfilename=MAINDICT["originalfilename"],
+                       originalfolder=platereader_output,
+                       renamedfilename=MAINDICT["targetfilename"],
+                       renamedfolder=LOCS.get_userpath())
+        rf["datecreated"].calculate()
+        rf.store()
+        MAINDICT["renamedfileobject"]=rf
+        LOG.info("Created {}".format(rf))
+        return MAINDICT
+    except Exception as e:
+        LOG.error("Couldn't created RenamedFile because {} {}"
+                  .format(e,get_traceback()))
+        return MAINDICT
+
+def proceed_with_autorename(MAINDICT):
+    INS=("Original filename {} looks fine\n\n"
+         "Use this filename?"
+         .format(MAINDICT["originalfilename"]))
+    root=tk.Tk()
+    OB3=OptionBox(root,
+                  title="PHENOS",
+                  instruct=INS)
+    root.focus_force()
+    root.geometry(windowposition)
+    root.mainloop()
+    answer=OB3.value
+
+    if answer=="Yes":
+        return True
+    return False
 #
 def main_rename():
     repeat=True
+    autorename=False
     #SELECT AND EYEBALL DATA FILE (Autoread info)
     while repeat:
         MAINDICT=choose_file_to_rename()
         if not MAINDICT: return
+        check=check_already_renamed(MAINDICT)
+        if check is not False:
+            if proceed_with_autorename(MAINDICT):
+                autorename=True
         repeat=False
         if summarise_file(MAINDICT) is False: repeat=True
-    
-    #SELECT USER FOLDER (Default to Locations().get_userpath())
-    if not choose_user_folder(MAINDICT):
-        #OPTION: CONTINUE WITHOUT DATA? (Just generates txt and basic curves)
-        output_to_txt(MAINDICT)
-        return
-    else:
-        #SELECT INITIALS (Default to last one in Files())
-        if not choose_user_initials(MAINDICT): return
-    
-    #SELECT EXPERIMENTNUMBER (Default to next highest. If already existing,
-    if not choose_experiment_number(MAINDICT): return
 
-    #SELECT FILELETTER (Deduce most likely, e.g. emptyplate program = 'a',
-    #                   next highest in folder = 'a'+1 etc)
-    if not choose_file_letter(MAINDICT): return
-    # then change following defaults)
+    if autorename is False:
+        #SELECT USER FOLDER (Default to Locations().get_userpath())
+        if not choose_user_folder(MAINDICT):
+            #OPTION: CONTINUE WITHOUT DATA? (Just generates txt and basic curves)
+            output_to_txt(MAINDICT)
+            return
+        else:
+            #SELECT INITIALS (Default to last one in Files())
+            if not choose_user_initials(MAINDICT): return
+        
+        #SELECT EXPERIMENTNUMBER (Default to next highest. If already existing,
+        if not choose_experiment_number(MAINDICT): return
 
-    #SELECT TREATMENT (Default to YPD, but check temperature too.)
-    if not choose_treatment(MAINDICT): return
+        #SELECT FILELETTER (Deduce most likely, e.g. emptyplate program = 'a',
+        #                   next highest in folder = 'a'+1 etc)
+        if not choose_file_letter(MAINDICT): return
+        # then change following defaults)
 
-    #SELECT LAYOUT (Default to e.g. Basic384 if a 384 program. ADVANCED:
-    #                suggest from 'fingerprint'?)
-    #CHECK THAT LAYOUT MATCHES RESULTS ARRAYDENSITY AND
-    #CONSISTENT WITH ANY EARLIER FILE
-    if not choose_layout(MAINDICT): return
+        #SELECT TREATMENT (Default to YPD, but check temperature too.)
+        if not choose_treatment(MAINDICT): return
 
-    #CHECK ORIENTATION
-    if not choose_orientation(MAINDICT): return
+        #SELECT LAYOUT (Default to e.g. Basic384 if a 384 program. ADVANCED:
+        #                suggest from 'fingerprint'?)
+        #CHECK THAT LAYOUT MATCHES RESULTS ARRAYDENSITY AND
+        #CONSISTENT WITH ANY EARLIER FILE
+        if not choose_layout(MAINDICT): return
 
-    #SELECT EXCLUSIONS
-    if choose_exclusions(MAINDICT) is None: return
+        #CHECK ORIENTATION
+        if not choose_orientation(MAINDICT): return
 
-    #SELECT TIMEOFFSET (Deduce from file datetime)
-    if not choose_timeoffset(MAINDICT): return
+        #SELECT EXCLUSIONS
+        if choose_exclusions(MAINDICT) is None: return
 
-    #SELECT NOTE (Deduce from previous)
-    if choose_note(MAINDICT) is None: return
+        #SELECT TIMEOFFSET (Deduce from file datetime)
+        if not choose_timeoffset(MAINDICT): return
 
-    #NOW RENAME & CREATE FILE OBJECT & READINGS
-    if not handle_file(MAINDICT): return
+        #SELECT NOTE (Deduce from previous)
+        if choose_note(MAINDICT) is None: return
+
+        #NOW RENAME & CREATE FILE OBJECT & READINGS
+        if not handle_file(MAINDICT): return
+
+    elif autorename is True:
+        if not choose_user_folder(MAINDICT):
+            #OPTION: CONTINUE WITHOUT DATA? (Just generates txt and basic curves)
+            output_to_txt(MAINDICT)
+            return
+        stored=store_fileobject(MAINDICT)
+        if stored is None:
+            print "No Layout file"
+            return
+        MAINDICT=stored
+        MAINDICT=store_renamed_file(MAINDICT)
     
     #NOW WHAT?
     lastrenamedfile=MAINDICT.get("renamedfileobject",None)
@@ -1660,6 +1742,7 @@ def delete_controlledexperiments(controlledexperiments,checkboxes=True):
             GOAHEAD=OB4.value
         if GOAHEAD=="Yes":
             ce.delete()
+            #WHY IS THIS DELETING THE 
             #Also delete from Controls or All
             cea=ControlledExperiments("All").query_by_kwargs(controlledexperimentid=ce.value)
             delete_controlledexperiments(cea,checkboxes=False)
@@ -1669,6 +1752,7 @@ def delete_controlledexperiments(controlledexperiments,checkboxes=True):
 
 #
 def main_rqtl():
+    choose_user_folder({},IGNORE=["All","Controls"])
     CE=ControlledExperiments()
     AlreadyExs=list(CE)
     UncontrolledExs=[CF for CF in CombiFiles()
