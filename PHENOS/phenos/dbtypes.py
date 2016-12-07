@@ -364,13 +364,17 @@ class Locations(object):
                 del Locations.userdbases[userfolder]
         
         if userfolder not in Locations.userdbases:
-            if userfolder==shareddbasenameroot:
-                DIR=Locations.rootdirectory
-            else:
-                DIR=os.path.join(self["datafiles"],userfolder)
+            DIR=self.get_dbasedir(userfolder)
             pth=os.path.join(DIR,"_{}.h5".format(userfolder))
             Locations.userdbases[userfolder]=DBase(pth)
         return Locations.userdbases[userfolder]
+
+    def get_dbasedir(self,userfolder):
+        if userfolder==shareddbasenameroot:
+            DIR=Locations.rootdirectory
+        else:
+            DIR=os.path.join(self["datafiles"],userfolder)
+        return DIR
 
     def get_plotspath(self):
         pp=os.path.join(self["plots"],Locations.currentuserfolder)
@@ -643,7 +647,6 @@ class ReadingFileNameReader(object):
     >>> print r["layout"]
     'ExampleLayout.csv'
     """
-    cautious=True
     filenameregexes=[re.compile("^(?P<user>\D*)\d+.*"),
                      re.compile("^\D*(?P<experimentnumber>\d+).*"),
                      re.compile("^\D*\d+(?P<fileletter>\D?).*"),
@@ -655,13 +658,10 @@ class ReadingFileNameReader(object):
                      re.compile("^.*S?[tT]\d*(?P<timeoffset>[-+]\d+).*"),
                      re.compile("^.* \((?P<note>.*)\)\.\D{1,5}$"),
                      re.compile("^.*(?P<extension>\.\D{1,5})$")]
-    keyproperties=["experimentnumber","fileletter","treatment","layout"]
-    uncommonproperties=["user",
-                        "reorient",
-                        "survivorstart",
-                        "timeoffset",
-                        "flags",
-                        "note"]
+    keyproperties=["experimentnumber",
+                   "fileletter",
+                   "treatment",
+                   "layout"]
 
     def __init__(self,path,passerrorsto=None):
         """
@@ -707,7 +707,29 @@ class ReadingFileNameReader(object):
     def __len__(self):
         return len(self.properties)
 
-    def process_flags(self,flagsstring):
+    def _build_dictionary_from_filepath(self):
+        directories,filename=os.path.split(self.path)
+        output={}
+        self.not_OK=False
+        for regex in self.filenameregexes:
+            matches=[m.groupdict() for m in regex.finditer(filename)]
+            patternname=list(regex.groupindex)[0]
+            if matches==[]:
+                if patternname in self.keyproperties:
+                    LOG.error("FileNameReader: '{}' has no recognizable '{}' "
+                              "field"
+                              .format(self.path,patternname))
+                    self.not_OK=True
+            else:
+                for match in matches:
+                    output.update(match)
+        if self.not_OK:
+            self.is_OK=False
+        else:
+            self.is_OK=True
+        return output
+
+    def _process_flags(self,flagsstring):
         """
         e.g. "FS101,A12=missing;FS159=contaminated"
         """
@@ -722,28 +744,6 @@ class ReadingFileNameReader(object):
                 reason=section2[1]
             for cell in cells:
                 output[cell]=reason
-        return output
-
-    def _build_dictionary_from_filepath(self):
-        directories,filename=os.path.split(self.path)
-        output={}
-        for regex in self.filenameregexes:
-            matches=[m.groupdict() for m in regex.finditer(filename)]
-            patternname=list(regex.groupindex)[0]
-            if matches==[]:
-                if patternname in self.keyproperties:
-                    LOG.error("FileNameReader: '{}' has no recognizable '{}' "
-                              "field"
-                              .format(self.path,patternname))
-                    self.is_ok=False
-                elif self.cautious and patternname not in self.uncommonproperties:
-                    LOG.error("FileNameReader: '{}' has no recognizable '{}' "
-                              "field"
-                              .format(self.path,patternname))
-                    self.is_ok=False
-            else:
-                for match in matches:
-                    output.update(match)
         return output
 
     def _type_conversions(self):
@@ -770,12 +770,11 @@ class ReadingFileNameReader(object):
             else:
                 output["survivorstart"]=0
         if "flags" in output:
-            output["flags"]=self.process_flags(output["flags"])
-        self.is_ok=True
+            output["flags"]=self._process_flags(output["flags"])
         return output
 
     def get_is_OK(self):
-        return getattr(self,"is_ok",True)
+        return self.is_OK
 
 class GenotypeFileNameReader(ReadingFileNameReader):
     """
@@ -4483,7 +4482,7 @@ class DBRecord(DBAtom):
         >>> r1.store(check=True)
         True
 
-        >>> print DBTable()
+        >>> print DBTable("Software Test")
         ____________________________
          dbatom  dbuint8  dbfloat32 
         ----------------------------
@@ -4494,7 +4493,7 @@ class DBRecord(DBAtom):
 
         >>> r1.delete()
         True
-        >>> print DBTable()
+        >>> print DBTable("Software Test")
         ____________________________
          dbatom  dbuint8  dbfloat32 
         ----------------------------
@@ -4522,9 +4521,13 @@ class DBRecord(DBAtom):
             for index in l[::-1]:
                 dbt.table.remove_row(index)
                 if report:
-                    LOG.info("{} has deleted itself from index {} of {}"
+                    LOG.info("{} ({}) has deleted itself from "
+                             "index {} of {} ({})"
                              .format(self.__str__(),
-                                     index,dbt.__class__.__name__))
+                                     self.dbasenameroot,
+                                     index,
+                                     dbt.__class__.__name__,
+                                     dbt.dbasenameroot))
         if autodeletesubrecords:
             if hasattr(self,"yield_records"):
                 if not subsidiaryrecords:
@@ -5475,9 +5478,12 @@ class DBTable(object):
         #>>> os.remove(testfilepath)
         """
         delimiter="\t"
-        tablename=self.__class__.__name__.lower()
+        tablename=self.__class__.__name__
         if filename is None:
-            filename=tablename+".tab"
+            filename="{}({}).tab".format(tablename,self.dbasenameroot)
+            filedir=Locations().get_dbasedir(self.dbasenameroot)
+            filename=os.path.join(filedir,filename)
+            print filename
         if os.path.exists(filename):
             if overwrite=="ask":
                 answer=raw_input("{} already exists. Overwrite it?"
@@ -5529,11 +5535,12 @@ class DBTable(object):
         >>> DBTable().strip_duplicates()
         True
         """
-        filename=os.path.basename(filepath)
-        tablename=self.__class__.__name__.lower()
-        if filename is None:
-            filename=tablename+".tab"
-            filepath=os.path.join(Locations()["plots"],filename)
+        if filepath is None:
+            tablename=self.__class__.__name__
+            filename="{}({}).tab".format(tablename,self.dbasenameroot)
+            filedir=Locations().get_dbasedir(self.dbasenameroot)
+            filepath=os.path.join(filedir,filename)
+
         if os.path.exists(filepath):
             #First read in records
             recs=[]
@@ -6611,6 +6618,9 @@ class PlateLayout(DBRecord,GraphicGenerator):
                 return False
             return fullpath
 
+    def file_exists(self):
+        return self["filepath"].is_valid()
+
     def is_genotyped(self):
         not_genotyped=[]
         genotyped=[]
@@ -7312,7 +7322,7 @@ class CombiFileID(DBString):
     coltype=tbs.StringCol(20)
     regex=re.compile("^(?P<user>\D*)"
                      "(?P<experimentnumber>\d*)"
-                     "(?P<fileletters>\D*)$")           
+                     "(?P<fileletters>\D*)$")
 
     @classmethod
     def create_from_files(cls,*files,**_combidict):
@@ -8078,6 +8088,12 @@ class CombiFile(DBRecord,GraphicGenerator):
             if f is None:
                 return
             try:
+                LOG.info("Deleting connection to combifile {} ({})"
+                         "in File {} ({})"
+                         .format(self.value,
+                                 self.dbasenameroot,
+                                 f.value,
+                                 f.dbasenameroot))
                 f.update_atoms(combifile=None)
             except Exception as e:
                 LOG.error("Can't delete {} from {} sourcefiles because {} {}"
@@ -8229,7 +8245,7 @@ class CombiFiles(DBTable,InMemory):
 
 #CONTROLLED EXPERIMENTS #######################################################
 class ControlledExperimentID(DBString):
-    coltype=tbs.StringCol(30)
+    coltype=tbs.StringCol(60)
     shortheader="cExID"
     colclip=6
 
@@ -8286,7 +8302,7 @@ class ControlledExperiment(CombiFile,GraphicGenerator):
            TimeFocus,PlusMinus,AllProcessed]
 
     defaultlookup="controlledexperimentid"
-    coltype=tbs.StringCol(20)
+    coltype=tbs.StringCol(60)
     shortheader="conEx"
     colclip=6
     strict=True
@@ -8625,6 +8641,9 @@ class ControlledExperiment(CombiFile,GraphicGenerator):
 
     def unlock(self):
         self.update_atoms(allprocessed=False)
+
+    def _delete_also(self):
+        return
 
     def diagnostics(self):
         warnings=[]
@@ -9772,12 +9791,12 @@ class PlateReaderProgram(DBString):
 class Model(DBString):
     coltype=tbs.StringCol(100) #BUT REIMPLEMENT AS RECORDATOM?
 class ControlledReadingID(DBString):
-    coltype=tbs.StringCol(60)
+    coltype=tbs.StringCol(120)
     shortheader="crdID"
     colclip=8
 
 class ControlReadingID(DBString):
-    coltype=tbs.StringCol(30)
+    coltype=tbs.StringCol(60)
     shortheader="crID"
     colclip=8
 
@@ -9842,7 +9861,7 @@ class Reading(DBRecord):
     defaultlookup="ReadingID"
     defaultcolorby="readinggroup"
     defaultcolor="black"
-    coltype=tbs.StringCol(20)
+    coltype=tbs.StringCol(40)
     strict=True
 
     def get_curve_dict(self,**kwargs):
@@ -9993,6 +10012,7 @@ class CombiReading(Reading,GraphicGenerator):
     titleformat="{prefix}{readingid} ({combifileid}) {platelayout} ({treatment}){suffix}"
     subfoldernameformat="{combifileid} '{platelayout}' ({note}) {treatment}"
     graphicsnamerootformat="{combifileid} {platelayout} ({treatment})"
+    coltype=tbs.StringCol(40)
 
     def rawmeasuredvaluesminusagar(self):
         em=self["emptymeasure"].value or 0
@@ -10110,6 +10130,7 @@ class ControlledReading(CombiReading):
            Strain,FinalAverage,Ratio,
            ErrorRecord]
     defaultlookup="ControlledReadingID"
+    coltype=tbs.StringCol(120)
 
     def is_empty(self):
         return False
@@ -10879,8 +10900,6 @@ def output_extremes_to_stinger(*args,**kwargs):
             fo.write("{}\t{}\n".format(br.summeasuredvalues(),br))
         LOG.info("SAVED TEMPLIST.TXT")
 
-
-
 #
 def read_qtl_digest(path=None,store=True):
     if path is None:
@@ -11048,9 +11067,10 @@ class Autocurator(object):
 
 #MAIN #########################################################################
 if __name__=='__main__':
-    setup_logging("INFO")
+    setup_logging("DEBUG")
     sys.excepthook=log_uncaught_exceptions
 
+    #Locations().change("Software Test")
     #import doctest
     #doctest.testmod()
 
