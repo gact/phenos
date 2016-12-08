@@ -11067,12 +11067,12 @@ class Autocurator(object):
 
 #MAIN #########################################################################
 if __name__=='__main__':
-    setup_logging("DEBUG")
+    setup_logging("ERROR")
     sys.excepthook=log_uncaught_exceptions
 
-    #Locations().change("Software Test")
-    #import doctest
-    #doctest.testmod()
+    Locations().change("Software Test")
+    import doctest
+    doctest.testmod()
 
     #Data from http://www.yeastgenome.org/search?q=paraquat&is_quick=true
 #    paraquatresistancedecreased=['CCS1','FRS2','IRA2','NAR1','POS5','PUT1','RNR4','SOD1','SOD2','UTH1']
