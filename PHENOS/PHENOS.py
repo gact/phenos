@@ -1229,6 +1229,9 @@ def main_rename():
         if check is not False:
             if proceed_with_autorename(MAINDICT):
                 autorename=True
+            else:
+                originalfilename=MAINDICT["originalfilename"]
+                MAINDICT={"originalfilename":originalfilename}
         repeat=False
         if summarise_file(MAINDICT) is False: repeat=True
 
