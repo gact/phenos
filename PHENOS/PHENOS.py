@@ -1018,9 +1018,26 @@ def choose_note(MAINDICT):
                  "If no note, hit <Return> or <Escape>"
                  .format(notallowed))
     NOTE=False
+    #find previous file and use its note as default
+    DEF=None
+    if MAINDICT["fileletter"]!="a":
+        F=Files(MAINDICT["userfolder"])
+        FLST=F.query_by_dictionary({"user":
+                                    MAINDICT["userinitials"],
+                                    "experimentnumber":
+                                    MAINDICT["experimentnumber"]})
+        if not FLST:
+            DEF=None
+        else:
+            FLST_dict=dict([(f["fileletter"].value,f) for f in FLST])
+            lastfile=FLST_dict[sorted(FLST_dict.keys())[-1]]
+            DEF=lastfile["note"]
     while NOTE is False:
         root=tk.Tk()
-        EB6=EntryBox(root,title="PHENOS",instruct=instruction)
+        EB6=EntryBox(root,
+                     title="PHENOS",
+                     instruct=instruction,
+                     default=DEF)
         root.focus_force()
         root.geometry(windowposition)
         root.mainloop()
