@@ -690,7 +690,11 @@ def choose_layout(MAINDICT):
     for pl in PLO:
         if pl["capacity"].value==arraysize:
             matches=FALL.get(platelayout=pl.value) or []
-            LST.append((pl.value,len(matches)))
+            try:
+                L=len(matches)
+            except:
+                L=1
+            LST.append((pl.value,L))
     LST.append(("*browse*",""))
 
     DEF="Basic{}".format(arraysize)
