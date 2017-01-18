@@ -1518,12 +1518,16 @@ def main_combine():
                  "or <Escape> to quit.\n\n"
                  "Hit <Delete> to remove any combined file(s) already created.\n\n"
                  "PHENOS will close on completion.")
+    try:
+        DEF=LST2[0][0]
+    except:
+        DEF=None
     LB7=MultiColumnListbox(root,
                            title=TIT,
                            instruct=instruction,
                            headers=headers,
                            lists=LST2,
-                           default=LST2[0][0],
+                           default=DEF,
                            selectmode="extended",
                            notselectable=notselectable,
                            delete_fn=delete_combifiles)
