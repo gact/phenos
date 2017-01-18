@@ -1,7 +1,9 @@
 #!/usr/bin/env python -tt
 # -*- coding: utf-8 -*-
 """
-
+N.B. 'platedmass' has been renamed 'printedmass' in filenames and
+graphical legends, but the underlying variable hasn't been changed
+as this would break existing databases.
 """
 #STANDARD LIBRARY
 import os,sys,shutil,colorsys
@@ -1828,7 +1830,7 @@ def plateview_emptylocalOLD(combifileob,
 
 def plateview_platedOLD(combifileob,
                      prefix="2_PrintingQuality",
-                     suffix="scaled by platedmass (scale=0-1.0) "
+                     suffix="scaled by printedmass (scale=0-1.0) "
                             "colored by local min-max",
                      extension=get_graphicstype(),
                      **kwargs):
@@ -1843,7 +1845,7 @@ def plateview_platedOLD(combifileob,
                      scalevaluebounds=(0,1.0),
                      radiusbounds=(0,combifileob["platedx"].value/2.0),
                      colorvalues=PMV,
-                     legendlabel='platedmass local min-max',
+                     legendlabel='printedmass local min-max',
                      labels=[cr["strain"].value for cr in recs],
                      labelfontalpha=0.75,
                      labeldepth=1.2,
@@ -1938,8 +1940,8 @@ def plateview_empty(combifileob,
 
 def plateview_plated(combifileob,
                      prefix="2_PrintingQuality",
-                     suffix="scaled by platedmass local min-max "
-                            "colored by platedmass (scale=0-1.0)",
+                     suffix="scaled by printedmass local min-max "
+                            "colored by printedmass (scale=0-1.0)",
                      extension=get_graphicstype(),
                      **kwargs):
     kwargs.update(locals().copy())
@@ -1955,7 +1957,7 @@ def plateview_plated(combifileob,
                      colorvaluebounds=(0,0.6),
                      colorschemebounds=(1.0,0.0),
                      invertcolorbar=True,
-                     legendlabel='platedmass',
+                     legendlabel='printedmass',
                      labels=[cr["strain"].value for cr in recs],
                      labelfontsize=6,
                      labelfontalpha=0.75,
@@ -1997,7 +1999,7 @@ def plateview_final(combifileob,
 def plateview_mixed(combifileob,
                     prefix="3_FinalGrowth",
                     suffix="scaled by maximumwithoutagar, "
-                           "colored by platedmass",
+                           "colored by printedmass",
                     extension=get_graphicstype(),
                     **kwargs):
     kwargs.update(locals().copy())
@@ -2011,7 +2013,7 @@ def plateview_mixed(combifileob,
                      scalevaluebounds=(0,5.0),
                      colorvalues=[cr["platedmass"].value for cr in recs],
                      colorscheme="rainbow",
-                     legendlabel='platedmass',
+                     legendlabel='printedmass',
                      title=combifileob.get_graphicstitle(**kwargs),
                      savepath=savepath)
         kwargs2.update(kwargs)
@@ -2057,7 +2059,7 @@ def plateview_experimentratios(controlexpob,
 #
 def plateanimate_basic(combifileob,
                        prefix="4_Animation",
-                       suffix="rawmeasuredvaluesminusagar",
+                       suffix="minusagar",
                        extension="mp4",
                        show=False,
                        **kwargs):
@@ -2091,7 +2093,7 @@ def plateanimate_basic(combifileob,
 
 def plateanimate_temp(combifileob,
                       prefix="4_Animation",
-                      suffix="rawmeasuredvaluesminusagar, "
+                      suffix="minusagar, "
                              "colored by temperature",
                       extension="mp4",
                       show=False,
@@ -2127,8 +2129,8 @@ def plateanimate_temp(combifileob,
 #
 def curveplot_basic(combifileob,
                     prefix="5_Curves",
-                    suffix="rawmeasuredvaluesminusagar, "
-                           "colored by platedmass",
+                    suffix="minusagar, "
+                           "colored by printedmass",
                     **kwargs):
     kwargs.update(locals().copy())
     savepath=get_checked_savepath(combifileob,**kwargs)
@@ -2144,7 +2146,7 @@ def curveplot_basic(combifileob,
                      colorvaluebounds=(0.0,0.6),
                      colorschemebounds=(1.0,0.0),
                      invertcolorbar=True,
-                     legendlabel='platedmass',
+                     legendlabel='printedmass',
                      title=combifileob.get_graphicstitle(**kwargs),
                      savepath=savepath)
         kwargs2.update(kwargs)
@@ -2156,7 +2158,7 @@ def curveplot_basic(combifileob,
 
 def curveplot_grouped(combifileob,
                       prefix="5_Curves",
-                      suffix="rawmeasuredvaluesminusagar, "
+                      suffix="minusagar, "
                              "colored by readinggroup",
                     **kwargs):
     kwargs.update(locals().copy())
@@ -2183,7 +2185,7 @@ def curveplot_grouped(combifileob,
 def curveplot_normalized(combifileob,
                          prefix="6_Curves",
                          suffix="measuredvalues, "
-                                "colored by platedmass",
+                                "colored by printedmass",
                          **kwargs):
     kwargs.update(locals().copy())
     savepath=get_checked_savepath(combifileob,**kwargs)
@@ -2199,7 +2201,7 @@ def curveplot_normalized(combifileob,
                      colorvaluebounds=(0.0,0.6),
                      colorschemebounds=(1.0,0.0),
                      invertcolorbar=True,
-                     legendlabel='platedmass',
+                     legendlabel='printedmass',
                      title=combifileob.get_graphicstitle(**kwargs),
                      savepath=savepath)
         kwargs2.update(kwargs)
@@ -2211,7 +2213,7 @@ def curveplot_normalized(combifileob,
 
 def curveplot_allreplicates(combifileob,
                             suffix="rawmeasuredvalueswithoutagar, "
-                                   "colored by platedmass",
+                                   "colored by printedmass",
                             pathformatter="{plotfolder}/{userfolder}/"
                                           "{experimentfolder}/ReplicatePlots/"
                                           "{prefix}{graphicsnameroot}"
@@ -2257,7 +2259,7 @@ def curveplot_allreplicates(combifileob,
                            colorvalues=[cr["platedmass"].value
                                         for cr in recs],
                            yaxislabel='OD600 minus agar',
-                           legendlabel='platedmass',
+                           legendlabel='printedmass',
                            colorscheme="rainbow",
                            colorvaluebounds=(0.0,0.6),
                            colorschemebounds=(1.0,0.0),
@@ -2429,7 +2431,7 @@ def histogram_basic(combifileob,
 #
 def scatterplot_basic(combifileob,
                       prefix="8_Scatterplot",
-                      suffix="scaled by platedmass",
+                      suffix="scaled by printedmass",
                       **kwargs):
     kwargs.update(locals().copy())
     savepath=get_checked_savepath(combifileob,**kwargs)
