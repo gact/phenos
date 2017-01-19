@@ -2159,10 +2159,11 @@ def curveplot_basic(combifileob,
 def curveplot_grouped(combifileob,
                       prefix="5_Curves",
                       suffix="minusagar, "
-                             "colored by readinggroup",
+                             "colored by groupname",
                     **kwargs):
     kwargs.update(locals().copy())
     savepath=get_checked_savepath(combifileob,**kwargs)
+    print savepath
 
     if savepath or kwargs.get("overwrite",False):
         recs=list(combifileob.yield_records())
@@ -2172,7 +2173,7 @@ def curveplot_grouped(combifileob,
                      yaxislabel='OD600 minus agar',
                      colorvalues=[cr["readinggroup"].value
                                   for cr in recs],
-                     legendlabel='readinggroup',
+                     legendlabel='groupname',
                      title=combifileob.get_graphicstitle(**kwargs),
                      savepath=savepath)
         kwargs2.update(kwargs)
