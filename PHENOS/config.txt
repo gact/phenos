@@ -1,8 +1,23 @@
 [Locations]
-source_directory = C:\Users\localadmin1\Desktop\Platereader output
-target_directory = D:\PHENOS3
-user_folder = HZ
+source_directory = C:\Platereader output
+target_directory = C:\PHENOSDATA
+user_folder = Test
+
+[Graphics]
+type = png
+
+[GUI]
+position = 1100,800,50,50
 
 [Controls]
 controls = YPD, YPD 30C, COM, COM 30C, Control
+
+[PhenotypeHandlers]
+!default = TreatmentRatioCalc, LagCalc, MaxSlopeCalc
+!unused = AverageWithoutAgarCalc, MaximumChangeCalc, PrintedMassCalc, PrintedMassControlledCalc
+MMS.* = TreatmentRatioCalc, DifferentialTimeCalc
+
+[CombiFileVisualizations]
+!default = AgarThickness, PrintingQuality, FinalGrowth, FinalGrowth_Lag, FinalGrowth_MaxSlope, CurvesWithoutAgar_PrintedMass, CurvesWithoutAgar_Groups, CurvesWithoutAgar_Slopes, CurvesWithoutAgar_Lags, CurvesNormalized_PrintedMass, Histogram_MaxWithoutAgar, Scatterplot_PrintedMass_Lag, Animation_Temp, ReplicatePlots
+!available = AgarThickness, PrintingQuality, FinalGrowth, Animation_Temp, CurvesWithoutAgar_PrintedMass, CurvesWithoutAgar_Groups, CurvesWithoutAgar_Slopes, CurvesWithoutAgar_Lags, CurvesNormalized_PrintedMass, Histogram_MaxWithoutAgar, Scatterplot_PrintedMass_Lag, ReplicatePlots, LayoutView, Animation, Histogram_MaxChange, FinalGrowth_Lag, FinalGrowth_MaxSlope
 

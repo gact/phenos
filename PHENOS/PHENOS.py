@@ -1517,7 +1517,8 @@ def main_combine():
     instruction=("Select combined file(s) to create and visualize\n"
                  "or <Escape> to quit.\n\n"
                  "Hit <Delete> to remove any combined file(s) already created.\n\n"
-                 "PHENOS will close on completion.")
+                 "PHENOS will close on completion.\n\n"
+                 "Hit <Insert> to open the plots folder for an existing combined file")
     try:
         DEF=LST2[0][0]
     except:
@@ -1530,7 +1531,8 @@ def main_combine():
                            default=DEF,
                            selectmode="extended",
                            notselectable=notselectable,
-                           delete_fn=delete_combifiles)
+                           delete_fn=delete_combifiles,
+                           insert_fn=open_plotfolder)
     root.focus_force()
     root.geometry(windowposition)
     root.mainloop()
@@ -1736,6 +1738,21 @@ def delete_combifiles(combifiles,checkboxes=True,delete_files_too=False):
             cfc=CombiFiles("Controls").query_by_kwargs(combifileid=cv)
             delete_combifiles(cfc,checkboxes=False,delete_files_too=True)
     return True
+
+def open_plotfolder(combifiles):
+    if type(combifiles)!=list:
+        LOG.critical("Should be passed list")
+        sys.exit()
+    if not combifiles or combifiles==[None]:
+        return None
+    for cfs in combifiles:
+        cf=CombiFiles()[cfs]
+        try:
+            cf.open_plots_folder()
+        except Exception as e:
+            LOG.error("Couldn't open plots folder for {} because {} {}"
+                      .format(cf.value,e,get_traceback()))
+    return None
 
 def delete_controlledexperiments(controlledexperiments,checkboxes=True):
     if type(controlledexperiments)!=list:
