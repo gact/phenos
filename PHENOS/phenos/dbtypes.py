@@ -51,7 +51,7 @@ except:
 
 filename=os.path.basename(__file__)
 authors=("David B. H. Barton")
-version="2.6"
+version="2.7"
 
 usecontrolsdatabase=True
 shareddbasenameroot="_phenos_shared_database"
@@ -311,8 +311,13 @@ class Locations(object):
         if userfolder is not None:
             self.set_userfolder(userfolder)
 
+    def get_config_dict(self):
+        if not hasattr(Locations,"configdict"):
+            Locations.configdict=get_config_dict()
+        return Locations.configdict
+
     def get_config_info(self):
-        CD=get_config_dict()
+        CD=self.get_config_dict()
         Locations.config_filepath=CD["config_filepath"]
         Locations.configparser=CD["configparser"]
         try:
@@ -562,6 +567,10 @@ class GraphicGenerator(object):
                 kwargs["prefix"]=""
             else:
                 kwargs["prefix"]=kwargs["prefix"].strip()+" "
+        if "number" in kwargs:
+            if kwargs["number"] is not None:
+                kwargs["prefix"]="{}_{}".format(kwargs["number"],
+                                                kwargs["prefix"])
         if "suffix" in kwargs:
             if kwargs["suffix"] is None:
                 kwargs["suffix"]=""
@@ -590,6 +599,10 @@ class GraphicGenerator(object):
                 kwargs["prefix"]=""
             else:
                 kwargs["prefix"]=kwargs["prefix"].strip()+" "
+        if "number" in kwargs:
+            if kwargs["number"] is not None:
+                kwargs["prefix"]="{}_{}".format(kwargs["number"],
+                                                kwargs["prefix"])
         if "suffix" in kwargs:
             if kwargs["suffix"] is None:
                 kwargs["suffix"]=""
@@ -2406,7 +2419,6 @@ class rQTLinputReader(GenotypeData):
                      .format(filepath))
             return True
 
-
     @classmethod
     def create_from_object(cls,ob,*args,**kwargs):
         """
@@ -2428,16 +2440,7 @@ class rQTLinputReader(GenotypeData):
             if not ob["timespan"].is_sufficient(fortext="output_to_rQTL"):
                 return False
             if not args:
-                if "MMS" in ob["treatment"].value or kwargs.get("Differential",False):
-                    if T in ["ControlledExperiment"]:
-                        args=[TreatmentRatioCalc,DifferentialTimeCalc,AverageWithoutAgarAtTimeCalc]
-                    else:
-                        args=[DifferentialTimeCalc,AverageWithoutAgarAtTimeCalc]
-                else:
-                    if T in ["ControlledExperiment"]:
-                        args=[TreatmentRatioCalc,AverageWithoutAgarAtTimeCalc]
-                    else:
-                        args=[AverageWithoutAgarAtTimeCalc]
+                args=ob["treatment"].get_phenotypehandlers()
         elif T=="CombiReadings":
             SFN=""
             if not args:
@@ -2448,7 +2451,7 @@ class rQTLinputReader(GenotypeData):
         kwargs.setdefault("remove_ignore",True)
         kwargs.setdefault("combine_replicates",False)
         
-        headertag=','.join(flatten([pc.get_header_list() for pc in phenotypecalculators]))
+        headertag=','.join(flatten([pc.get_external_headers() for pc in phenotypecalculators]))
         #
         filepaths=[]
         for rqtlgroup,recs in split_records_by_rQTLgroup(ob).items():
@@ -6334,7 +6337,8 @@ class FileLetter(DBString):
 
 class Treatment(DBString):
     coltype=tbs.StringCol(40)
-    controls=get_config_dict()["controls"]
+    controls=Locations().get_config_dict()["controls"]
+    handlers=Locations().get_config_dict()["phenotypehandlers"]
 
     def calculate(self):
         """
@@ -6351,6 +6355,41 @@ class Treatment(DBString):
 
     def is_control(self):
         return str(self.value).strip() in self.controls
+
+    def get_phenotypehandlers(self):
+        """
+        Consults the config.txt PhenotypeHandlers section
+        If no match to any regex header in that, will default to
+        those listed in '!default'
+        """
+        def convert_handlernames_into_handlers(lst):
+            output=[]
+            for s in lst:
+                if s in globals():
+                    output.append(globals()[s])
+            return output
+        
+        if not self.handlers:
+            LOG.error("Can't find phenotypehandlers in config.txt")
+            return [MaximumChangeCalc]
+        specialkeys={k:convert_handlernames_into_handlers(v)
+                     for k,v in self.handlers.items()
+                     if k.startswith("!")}
+        otherkeys={k:convert_handlernames_into_handlers(v)
+                   for k,v in self.handlers.items()
+                   if k not in specialkeys}
+        for k,v in otherkeys.items():
+            if re.match(k,self.value):
+                LOG.info("Matched treatment {} to phenotypehandlers "
+                         "for {} = {}".format(self.value,k,
+                                              str([c.__name__ for c in v])))
+                return v
+        LOG.info("Haven't found special phenotypehandlers for treatment {}"
+                 " in config.txt, so using !default = {}"
+                 .format(self.value,str([c.__name__
+                                         for c
+                                         in specialkeys["!default"]])))
+        return specialkeys["!default"]
 
 class ExperimentTimeStamp(DBDateTime):
     shortheader="exTS"
@@ -6857,7 +6896,7 @@ class PlateLayout(DBRecord,GraphicGenerator):
         return self
 
     def draw(self,**kwargs):
-        return plateview_layout(self,**kwargs)
+        return LayoutView(self,**kwargs)
 
     def display(self,label="strain",delimiter="\t",printit=True):
         platepositions=self.yield_records()
@@ -7154,6 +7193,9 @@ class AllProcessed(DBBool):
 class PhenotypeCalculator(object):
     allowed=["Reading","CombiReading","ControlledReading"]
     def __init__(self,experimentobject=None):
+        for k,v in self.__class__.__dict__.items():
+            if not type(v).__name__=="function":
+                self.__dict__[k]=v
         if experimentobject:
             self.experimentobject=experimentobject
 
@@ -7161,21 +7203,23 @@ class PhenotypeCalculator(object):
         if self.experimentobject.__class__.__name__=="ControlledExperiment":
             self.timefocus=self.experimentobject["timefocus"].value
             self.plusminus=self.experimentobject["plusminus"].value
+            self.maxtime=max(self.experimentobject.timevalues())
 
-    def get_headers(self):
-        return "Null"
+    def get_header_list(self):
+        if not hasattr(self,"headers"):
+            self.find_timefocus()
+            self.headers=[self.internalheaderformat.format(**self.__dict__)]
+        return self.headers
 
-    def get_phenotypes(self,record):
-        """
-        readingobject could be a reading, combireading or controlledreading
-        """
-        assert record.__name__ in self.allowed
-        return None
+    def get_external_headers(self):
+        if not hasattr(self,"external"):
+            self.find_timefocus()
+            self.external=[self.externalheadercode.format(**self.__dict__)]
+        return self.external
 
 class MaximumChangeCalc(PhenotypeCalculator):
-    def get_header_list(self):
-        CF=self.experimentobject["combifile"]
-        return ["MC@{:.1f}hrs".format(max(CF.timevalues()))]
+    internalheaderformat="MaximumChange({maxtime:.1f}hrs)"
+    externalheadercode="MxCh({timefocus:.1f}hrs)"
 
     def get_phenotype_list(self,record):
         """
@@ -7184,13 +7228,9 @@ class MaximumChangeCalc(PhenotypeCalculator):
         assert record.__class__.__name__ in self.allowed
         return [record["maximumchange"]]
 
-class AverageWithoutAgarAtTimeCalc(PhenotypeCalculator):
-    def get_header_list(self):
-        if not hasattr(self,"headers"):
-            self.find_timefocus()
-            self.headers=["AWA({:.1f}hrs+-{})"
-                          .format(self.timefocus,self.plusminus)]
-        return self.headers
+class AverageWithoutAgarCalc(PhenotypeCalculator):
+    internalheaderformat="AverageWithoutAgar({timefocus:.1f}hrs+-{plusminus})"
+    externalheadercode="AvWoAg({timefocus:.1f}hrs+-{plusminus})"
 
     def get_phenotype_list(self,record):
         """
@@ -7204,12 +7244,8 @@ class AverageWithoutAgarAtTimeCalc(PhenotypeCalculator):
 
 class TreatmentRatioCalc(PhenotypeCalculator):
     allowed=["ControlledReading"]
-    def get_header_list(self):
-        if not hasattr(self,"headers"):
-            self.find_timefocus()
-            self.headers=["TR({:.1f}hrs+-{})"
-                          .format(self.timefocus,self.plusminus)]
-        return self.headers
+    internalheaderformat="TreatmentRatio({timefocus:.1f}hrs+-{plusminus})"
+    externalheadercode="TR({timefocus:.1f}hrs+-{plusminus})"
 
     def get_phenotype_list(self,record):
         """
@@ -7217,20 +7253,43 @@ class TreatmentRatioCalc(PhenotypeCalculator):
         """
         assert record.__class__.__name__ in self.allowed
         return [record["ratio"].value]
-        """
-        TR=record.get_treatment_reading()
-        CR=record.get_control_reading()
 
-        avT,nreadingsT=TR.average_about_time(timepoint=self.timefocus,
-                                             plus_minus=self.plusminus,
-                                             report=False)
-        avC,nreadingsC=CR.average_about_time(timepoint=self.timefocus,
-                                             plus_minus=self.plusminus,
-                                             report=False)
-        return [avT/avC]
-        """
+class LagCalc(PhenotypeCalculator):
+    allowed=["CombiReading","ControlledReading"]
+    internalheaderformat="Lag(hrs)"
+    externalheadercode="Lag"
+
+    def get_phenotype_list(self,record):
+        assert record.__class__.__name__ in self.allowed
+        output=record.get_lag()
+        if type(output)==float:
+            return [output]
+        return [""]
+
+class MaxSlopeCalc(PhenotypeCalculator):
+    allowed=["CombiReading","ControlledReading"]
+    internalheaderformat="MaxSlope(change OD/hr)"
+    externalheadercode="MxSl"
+    def get_header_list(self):
+        if not hasattr(self,"headers"):
+            self.find_timefocus()
+            self.headers=[self.internalheaderformat]
+        return self.headers
+
+    def get_phenotype_list(self,record):
+        assert record.__class__.__name__ in self.allowed
+        output=record.get_maxslope()
+        if type(output)==float:
+            return [output]
+        return [""]
 
 class DifferentialTimeCalc(PhenotypeCalculator):
+    allowed=["CombiReading","ControlledReading"]
+    timefocus1=20.0
+    timefocus2=47.0
+    internalheaderformat="DifferentialTimeCalc({timefocus2:.1f}-{timefocus1:.1f}hrs (+-{plusminus:.1f}hrs))"
+    externalheadercode="DT({timefocus2:.1f}-{timefocus1:.1f}hrs (+-{plusminus:.1f}hrs))"
+
     def find_timefocus(self,report=True):
         """
         Assume 65 hours and 25 hours timepoints both present and return difference
@@ -7255,13 +7314,6 @@ class DifferentialTimeCalc(PhenotypeCalculator):
                      .format(','.join(["{:.1f}".format(t) for t in timevalues2]),
                              ','.join(["{:.1f}".format(t) for t in timevalues1])))
 
-    def get_header_list(self):
-        if not hasattr(self,"headers"):
-            self.find_timefocus()
-            return ["DT({:.1f}+-{:.1f}hrs-{:.1f}+-{:.1f}hrs)"
-                    .format(self.timefocus2,self.plusminus,
-                            self.timefocus1,self.plusminus)]
-
     def get_phenotype_list(self,record):
         """
         readingobject could be a reading, combireading or controlledreading
@@ -7277,10 +7329,10 @@ class DifferentialTimeCalc(PhenotypeCalculator):
                                                  generatefresh=True)
         return [av2-av1]
 
-class PlatedMassCalc(PhenotypeCalculator):
-    """platedmass from each reading"""
-    def get_header_list(self):
-        return ["PM"]
+class PrintedMassCalc(PhenotypeCalculator):
+    internalheaderformat="PrintedMass"
+    externalheadercode="PrMs"
+    """printedmass from each reading"""
 
     def get_phenotype_list(self,record):
         """
@@ -7290,7 +7342,9 @@ class PlatedMassCalc(PhenotypeCalculator):
         PM=float(record["platedmass"].value)
         return [PM]
 
-class PlatedMassControlledCalc(PhenotypeCalculator):
+class PrintedMassControlledCalc(PhenotypeCalculator):
+    internalheaderformat="PrintedMassControlled"
+    externalheadercode="PrMsCont"
     """
     subtracts the maximumchange recorded in the reading to take into account
     the following:
@@ -7305,9 +7359,6 @@ class PlatedMassControlledCalc(PhenotypeCalculator):
     a colony that tends to stay small and still gives big platedmasses
     e.g. PM-MC = 1.0-0.5 = 0.5
     """
-    def get_header_list(self):
-        return ["PMC"]
-
     def get_phenotype_list(self,record):
         """
         readingobject could be a reading, combireading or controlledreading
@@ -7411,8 +7462,8 @@ class CombiFile(DBRecord,GraphicGenerator):
         matches=[m.groupdict()
                  for m in CombiFileID.regex.finditer(self["combifileid"].value
                                                      )][0]
-        if len(matches["user"])==1:
-            return matches["user"][0]
+        if type(matches["user"])==str:
+            return matches["user"]
         else:
             return None
 
@@ -7778,7 +7829,7 @@ class CombiFile(DBRecord,GraphicGenerator):
         for record in self.yield_records():
             return record
 
-    def output_to_txt(self,
+    def output_to_txtOLD(self,
                       prefix="CombiFile",
                       extension="tab",
                       delimiter="\t",
@@ -7806,9 +7857,62 @@ class CombiFile(DBRecord,GraphicGenerator):
             for i,rec in enumerate(self.yield_records()):
                 if i==0:
                     row=rec._get_txt_headers(spacer=timespacer,
-                                             trim=True)
+                                                 trim=True)
                     writer.writerow(row)
                 row=rec._get_txt_row(spacer=timespacer,trim=True)
+                writer.writerow(row)
+            fileob.close()
+            LOG.info("{} created".format(filepath))
+        return filepath
+
+    def output_to_txt(self,
+                      prefix="CombiFile",
+                      extension="tab",
+                      delimiter="\t",
+                      timespacer="\t",
+                      ask=False,
+                      replace=False,
+                      **kwargs):
+        """
+        An improvement over the original method- yields measurements minus agar
+        and also includes lag and slope values if available.
+        """
+        kwargs.update(locals().copy())
+        del kwargs["self"]
+
+        headers1=['readingid', 'plateposition', 'strain', 'ignore',
+                  'isblank', 'isborder', 'readinggroup', 'treatment', 'agar absorbance',
+                  'minimumwithoutagar', 'maximumwithoutagar', 'maximumchange',
+                  'maximumslope','lag']
+        headersLU=['readingid', 'plateposition', 'strain', 'ignore',
+                  'isblank', 'isborder', 'readinggroup', 'treatment', 'emptymeasure',
+                  'minimumwithoutagar', 'maximumwithoutagar', 'maximumchange',
+                  'get_maxslope','get_lag']
+        headers2=["{:.4f}".format(t) for t in self.timevalues()]
+        headers=headers1+['measurementsminusagar']+headers2
+
+        filepath=self.get_graphicspath(**kwargs)
+        if os.path.exists(filepath):
+            if ask:
+                answer=raw_input("{} already exists. Overwrite it?"
+                                 .format(filepath))
+                if not answer.lower().startswith("y"):
+                    return
+            elif not replace:
+                LOG.info("{} already exists".format(filepath))
+                return
+        prepare_path(os.path.dirname(filepath))
+        with open(filepath,"wb") as fileob:
+            writer=csv.writer(fileob,
+                              delimiter=delimiter,
+                              quoting=csv.QUOTE_MINIMAL)
+            for i,rec in enumerate(self.yield_records()):
+                if i==0:
+                    row=headers
+                    writer.writerow(row)
+                rowA=[str(ATOMORNOT(rec[h])) for h in headersLU]
+                rowB=[str(m) for m in rec["rawmeasuredvaluesminusagar"]]
+                row=rowA+[""]+rowB
                 writer.writerow(row)
             fileob.close()
             LOG.info("{} created".format(filepath))
@@ -7834,28 +7938,28 @@ class CombiFile(DBRecord,GraphicGenerator):
 
     def draw(self,**kwargs):
         try:
-            return plateview_final(self,**kwargs)
+            return FinalGrowth(self,**kwargs)
         except Exception as e:
             LOG.info("couldn't draw {}: {}".format(self.value,e))
             return False
 
     def draw_empty(self,**kwargs):
         try:
-            return plateview_empty(self,**kwargs)
+            return EmptyPlateView(self,**kwargs)
         except Exception as e:
             LOG.info("couldn't draw_empty {}: {}".format(self.value,e))
             return False
 
-    def draw_plated(self,**kwargs):
+    def draw_printed(self,**kwargs):
         try:
-            return plateview_plated(self,**kwargs)
+            return PrintingQuality(self,**kwargs)
         except Exception as e:
             LOG.info("couldn't draw_plated {}: {}".format(self.value,e))
             return False
 
     def draw_layout(self,**kwargs):
         try:
-            return self["platelayout"].draw(**kwargs)
+            return LayoutView(self,**kwargs)
         except Exception as e:
             LOG.info("couldn't draw_layout {} for {}: {}"
                      .format(self["platelayout"].value,
@@ -7866,7 +7970,7 @@ class CombiFile(DBRecord,GraphicGenerator):
     def animate(self,**kwargs):
         if self["timespan"].is_sufficient(fortext="animate"):
             try:
-                return plateanimate_temp(self,**kwargs)
+                return Animation_Temp(self,**kwargs)
             except Exception as e:
                 pyplt.close('all')
                 LOG.info("couldn't animate {}: {}".format(self.value,e))
@@ -7875,7 +7979,7 @@ class CombiFile(DBRecord,GraphicGenerator):
     def plot(self,**kwargs):
         if self["timespan"].is_sufficient(fortext="plot"):
             try:
-                return curveplot_basic(self,**kwargs)
+                return CurvesWithoutAgar_PrintedMass(self,**kwargs)
             except Exception as e:
                 LOG.info("couldn't plot {}: {}".format(self.value,e))
                 return False
@@ -7883,7 +7987,7 @@ class CombiFile(DBRecord,GraphicGenerator):
     def plot_normal(self,**kwargs):
         if self["timespan"].is_sufficient(fortext="plot_normal"):
             try:
-                return curveplot_normalized(self,**kwargs)
+                return CurvesNormalized_PrintedMass(self,**kwargs)
             except Exception as e:
                 LOG.info("couldn't plot_normal {}: {}".format(self.value,e))
                 return False
@@ -7891,7 +7995,7 @@ class CombiFile(DBRecord,GraphicGenerator):
     def plot_grouped(self,**kwargs):
         if self["timespan"].is_sufficient(fortext="plot_grouped"):
             try:
-                return curveplot_grouped(self,**kwargs)
+                return CurvesWithoutAgar_Groups(self,**kwargs)
             except Exception as e:
                 LOG.info("couldn't plot_grouped {}: {}".format(self.value,e))
                 return False
@@ -7899,7 +8003,7 @@ class CombiFile(DBRecord,GraphicGenerator):
     def plot_replicates(self,**kwargs):
         if self["timespan"].is_sufficient(fortext="plot_replicates"):
             try:
-                return curveplot_allreplicates(self,**kwargs)
+                return ReplicatePlots(self,**kwargs)
             except Exception as e:
                 LOG.info("couldn't plot_replicates {}: {}".format(self.value,e))
                 return False
@@ -7907,7 +8011,7 @@ class CombiFile(DBRecord,GraphicGenerator):
     def histogram(self,**kwargs):
         if self["timespan"].is_sufficient(fortext="histogram"):
             try:
-                return histogram_basic(self,**kwargs)
+                return Histogram_MaxWithoutAgar(self,**kwargs)
             except Exception as e:
                 LOG.info("couldn't histogram {}: {}".format(self.value,e))
                 return False
@@ -7915,12 +8019,64 @@ class CombiFile(DBRecord,GraphicGenerator):
     def scatterplot(self,**kwargs):
         if self["timespan"].is_sufficient(fortext="scatterplot"):
             try:
-                return scatterplot_basic(self,**kwargs)
+                return Scatterplot_PlatedMass_Lag(self,**kwargs)
             except Exception as e:
                 LOG.info("couldn't scatterplot {}: {}".format(self.value,e))
                 return False
 
     def illustrate(self,**kwargs):
+        overwrite=kwargs.pop("overwrite",False)
+        try:
+            TV=self["timevalues"]
+            assert TV
+        except:
+            LOG.error("unable to get valid time values for {}"
+                      .format(self.value))
+            return
+        if overwrite or not self["allprocessed"].value:
+            self.open_plots_folder()
+            vislookup=Locations().configdict["combifilevisualizations"]
+            usr=self.user()
+            if usr in vislookup:
+                vislist=vislookup[usr]
+            else:
+                vislist=vislookup["!default"]
+            faillog=[]
+            for i,visclassname in enumerate(vislist):
+                visclass=globals().get(visclassname,None)
+                if visclass is None:
+                    LOG.error("couldn't get visclass {}".format(visclassname))
+                    faillog.append(visclassname)
+                else:
+                    try:
+                        output=visclass(self,number=i+1,**kwargs)
+                    except Exception as e:
+                        LOG.error("couldn't visualize {} for {}: {} {}"
+                                  .format(visclassname,self.value,e,get_traceback()))
+                        faillog.append(visclassname)
+            if faillog:
+                LOG.warning("couldn't create some visualizations: {}"
+                            .format(", ".join(faillog)))
+            else:
+                self.update_atoms(allprocessed=True)
+            PSFP=self.get_plotssubfolderpath()
+            if os.path.exists(PSFP):
+                CD=Locations().get_userpath()
+                CDname=os.path.split(CD)[-1]
+                lnkname=os.path.join(PSFP,"~Data files_"+CDname+".lnk")
+                create_Windows_shortcut(targetpath=CD,
+                                        locationpath=lnkname)
+            try:
+                pyplt.close('all')
+            except Exception as e:
+                LOG.error("couldn't close pyplt to free up memory because {} {}"
+                          .format(e,get_traceback()))
+            
+        else:
+            LOG.info("{} already fully illustrated"
+                     .format(self.value))
+
+    def illustrateOLD(self,**kwargs):
         overwrite=kwargs.pop("overwrite",False)
         try:
             TV=self["timevalues"]
@@ -7938,10 +8094,10 @@ class CombiFile(DBRecord,GraphicGenerator):
                       self.plot(**kwargs),
                       self.plot_normal(**kwargs),
                       self.plot_grouped(**kwargs),
-                      self.plot_replicates(**kwargs),
                       self.histogram(**kwargs),
+                      self.scatterplot(**kwargs),
+                      self.plot_replicates(**kwargs),
                       self.animate(**kwargs)]#,
-                      #self.scatterplot(**kwargs)]
             if False in allplots:
                 LOG.warning("couldn't create all plots: {}"
                             .format(str(allplots)))
@@ -8579,7 +8735,7 @@ class ControlledExperiment(CombiFile,GraphicGenerator):
     def draw_ratios(self,**kwargs):
         if self["timespan"].is_sufficient(fortext="draw_ratios"):
             try:
-                return plateview_experimentratios(self,**kwargs)
+                return ControlledRatios(self,**kwargs)
             except Exception as e:
                 LOG.info("couldn't draw_ratios {}: {} {}"
                          .format(self.value,e,get_traceback()))
@@ -10011,14 +10167,17 @@ class CombiReading(Reading,GraphicGenerator):
            ReadingGroup,Treatment,
            EmptyMeasure,PlatedMass,Minimum,Measurements,
            Model,ErrorRecord]
-    titleformat="{prefix}{readingid} ({combifileid}) {platelayout} ({treatment}){suffix}"
+    titleformat="{prefix} {strain} ({readingid}) {platelayout} ({treatment}){suffix}"
     subfoldernameformat="{combifileid} '{platelayout}' ({note}) {treatment}"
-    graphicsnamerootformat="{combifileid} {platelayout} ({treatment})"
+    graphicsnamerootformat="{strain} {combifileid} {platelayout} ({treatment})"
     coltype=tbs.StringCol(40)
 
     def rawmeasuredvaluesminusagar(self):
         em=self["emptymeasure"].value or 0
         return [y-em for y in self.rawmeasuredvalues()]
+
+    def minimumwithoutagar(self):
+        return self["minimum"].value-self["emptymeasure"].value
 
     def maximumwithoutagar(self):
         return (max(self["measurements"]._get_trimmed())+self["minimum"].value)-self["emptymeasure"].value
@@ -10045,7 +10204,7 @@ class CombiReading(Reading,GraphicGenerator):
         return self["combifile"]["user"]
 
     def plot(self,**kwargs):
-        return CurvePlot([self],**kwargs)
+        return CurveAnalysis(self,**kwargs)
 
     def get_replicates(self):
         query=self.__class__(combifile=self["combifile"].value,
@@ -10076,6 +10235,70 @@ class CombiReading(Reading,GraphicGenerator):
     def markers(self):
         return self["strain"].markers()
 
+    def intervals(self,upto=None):
+        """
+        returns minimum and maximum interval between timepoints
+        """
+        TV=self.timevalues()
+        if upto:
+            TV=TV[:upto]
+        intervals=[y-x for x,y in get_kmer_list(TV,k=2)]
+        return min(intervals),max(intervals)
+
+    def get_inflection(self,smoothing=15):
+        """
+        Smooth data, then get deltas (differences between measures)
+        and identify first peak among deltas, and trace that
+        back to the nearest original timepoint and measurement
+        """
+        if sum(self.intervals(upto=30))>2:
+            return False
+        if not hasattr(self,"measureinflection"):
+            Mwa=self.rawmeasuredvaluesminusagar()
+            T=self.timevalues()
+            SM=smooth_series(Mwa,k=smoothing)
+            ST=smooth_series(T,k=smoothing)
+            dM=delta_series(SM)
+            if not dM:
+                return False
+            peakdMi=find_first_peak(dM[1:])+1
+            #print peakdMi,dM[peakdMi]
+            #print
+            neighbouringtimepoints=ST[peakdMi-1:peakdMi+1]
+            middletimepoint=sum(neighbouringtimepoints)/2.0
+            CI=closest_index(T,middletimepoint)
+            self.measureinflection=Mwa[CI]
+            self.timeinflection=T[CI]
+            #NOW GO AHEAD AND WORK OUT SLOPE & LAG WHILE ALL DATA IS HERE
+            if 0<CI<len(T):
+                M1,M2=Mwa[CI-1],Mwa[CI+1]
+                T1,T2=T[CI-1],T[CI+1]
+                C1,C2=cellcount_estimate(M1),cellcount_estimate(M2)
+                #print "1: {} ({}) @ {}".format(M1,C1,T1)
+                #print "2: {} ({}) @ {}".format(M2,C2,T2)
+                self.maxslope=calc_slope(M1,M2,T1,T2)
+                Cslope=calc_slope(C1,C2,T1,T2)
+                minminusagar=self["minimum"].value-self["emptymeasure"].value
+                #slopeC=cellcount_estimate(self.slope)
+                #print "MI {}, TI {}".format(self.measureinflection,
+                #                            self.timeinflection)
+                #print "Slopes {} ({})".format(self.slope,Cslope)#,slopeC)
+                self.lag=calc_lag(self.maxslope,self.measureinflection,
+                                  minminusagar,self.timeinflection)
+                #print "lag {} hrs".format(self.lag)
+        return self.measureinflection,self.timeinflection
+
+    def get_lag(self):
+        if not hasattr(self,"lag"):
+            if not self.get_inflection():
+                return False
+        return self.lag
+
+    def get_maxslope(self):
+        if not hasattr(self,"maxslope"):
+            if not self.get_inflection():
+                return False
+        return self.maxslope
 
 class CombiReadings(Readings):
     tablepath="/combireadings"
@@ -11069,9 +11292,12 @@ class Autocurator(object):
 
 #MAIN #########################################################################
 if __name__=='__main__':
-    setup_logging("ERROR")
+    setup_logging("CRITICAL")
     sys.excepthook=log_uncaught_exceptions
 
+#    ce=ControlledExperiments()["MA125abc_MA36ab"]
+#    print ce["combifile"].illustrate(overwrite=True)
+    #ce.output_to_rQTL()
 #    Locations().change("Software Test")
 #    import doctest
 #    doctest.testmod()

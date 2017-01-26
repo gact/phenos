@@ -4,7 +4,9 @@
 #STANDARD LIBRARY
 import os,sys,time,shutil,subprocess
 import logging,platform,ConfigParser,traceback
+import numpy as np
 from itertools import chain
+from math import e
 from collections import defaultdict
 #OTHER
 from matplotlib import use as mpluse
@@ -17,7 +19,7 @@ import win32com
 
 filename = os.path.basename(__file__)
 authors = ("David B. H. Barton")
-version = "2.6"
+version = "2.7"
 
 LOG=logging.getLogger()
 
@@ -34,6 +36,88 @@ flatten=lambda nested: list(chain.from_iterable(nested))
 tzip=lambda t1,m1,t2,m2: zip(*sorted(zip(t1,m1)+zip(t2,m2)))
 
 ATOMORNOT=lambda(aon): getattr(aon,"value",aon)
+
+def cellcount_estimate(rawmeasuredminusagar):
+    """
+    log10(P)=0.7625(A)+4.8914
+    P=77875.3e(1.75572A)
+    Determined empirically using cell counts
+    and least squares curve fitting
+    """
+    A=rawmeasuredminusagar
+    return 77875.3*e**(1.75572*A)
+
+def calc_slope(m1,m2,t1,t2):
+    """
+    The slope of a line
+    """
+    try:
+        return (m2-m1)/float(t2-t1)
+    except Exception as e:
+        LOG.error("Can't calculate slope for {}-{}/{}-{} "
+                  "because {} {}".format(m2,m1,t2,t1,e,get_traceback()))
+        return None
+
+def calc_lag(slope,measureinflection,minimum,timeinflection):
+    """
+    Taking the slope at the inflection point (the steepest part
+    of the curve), and tracing that slope back until it reaches
+    the value of the minimum measurement, gives the lag time.
+    """
+    if not slope:
+        return None
+    try:
+        measureinflectionchange=measureinflection-minimum
+        timeoflinescrossing=measureinflectionchange/slope
+        timeofslopecrossingminimum=timeinflection-timeoflinescrossing
+    except Exception as e:
+        LOG.error("Can't calculate lag for slope {}, measureinflection {}, "
+                  "minimum {}, timeinflection {} "
+                  "because {} {}".format(slope,measureinflection,
+                                         minimum,timeinflection,
+                                         e,get_traceback()))
+        return None
+    if np.isinf(timeofslopecrossingminimum): return None
+    return timeofslopecrossingminimum
+
+def doubling_time(slope):
+    """
+    slope (change_in_rawmeasuredvalueminusagar / change_in_time)
+    """
+    cellcountslope=cellcount_estimate(slope)
+    
+
+def get_kmer_list(iterable,k=2):
+    """reduces len of iterable by k-1"""
+    return [iterable[x:x+k] for x in range(len(iterable)+1-k)]
+
+def smooth_series(iterable,k=2):
+    """reduces len of iterable by k-1"""
+    avg=lambda L:float(sum(L))/k
+    return [avg(i) for i in get_kmer_list(iterable,k=k)]
+
+def antimirror_before_zero(iterable):
+    """
+    to avoid problems with slope-finding algorithm,
+    any initial dips in the curve are replaced with negative mirrors of the readings
+    after the zero, provided that the zero occurs within the first half of the sequence
+    """
+    zeroindex=iterable.index(0.0)
+    if zeroindex>len(iterable)/2.0:
+        return iterable
+    segment_to_antimirror=iterable[zeroindex+1:(zeroindex*2)+1]
+    negatives=[-v for v in segment_to_antimirror[::-1]]
+    return negatives+iterable[zeroindex:]
+
+def delta_series(iterable,k=2):
+    delta=lambda L:L[-1]-L[0]
+    return [delta(i) for i in get_kmer_list(iterable,k=k)]
+
+def find_first_peak(iterable):
+    lv=-100000
+    for i,v in enumerate(iterable):
+        if v<=lv: return i-1
+        lv=v
 
 def get_chrcumulative():
     """
@@ -114,6 +198,9 @@ def fromRoman(romannumeralstring):
     return result
 
 def closest_index(lst,value):
+    """
+    Returns the index of the closest value to 'value' in lst
+    """
     return min(range(len(lst)), key=lambda i: abs(lst[i]-value))
 
 def get_indices_around(lst,centervalue,plusminus=0.5):
@@ -250,35 +337,65 @@ def get_config_filepath():
 def get_config_dict():
     CFpth=get_config_filepath()
     CFpars=ConfigParser.SafeConfigParser()
+    CFpars.optionxform = str #prevents section header cases from being changed
+
+    def safeget(section,defaultheader,defaultcontent):
+        if not CFpars.has_section(section):
+            return None
+        return CFpars.get(section,defaultheader,defaultcontent)
+
+    def getall(section,default):
+        if not CFpars.has_section(section):
+            return None
+        return dict(CFpars.items(section))
+    
     CFpars.read(CFpth)
     def splitcontrols(controlsstring):
         return [c.strip() for c in controlsstring.split(",")]
     
     def splitnumbers(numberstring):
         return tuple([int(n.strip()) for n in numberstring.split(",")])
-    
+
+    def splitvalues(dictionary):
+        return {k:[i.strip() for i in v.split(",")]
+                for k,v in dictionary.items()}
+
     output={"config_filepath":CFpth,
             "configparser":CFpars,
             "scriptdirectory":scriptdir(),
-            "target_directory":CFpars.get("Locations",
-                                          "target_directory",
-                                          find_rootdir()),
-            "source_directory":CFpars.get("Locations",
-                                          "source_directory",
-                                          None),
-            "user_folder":CFpars.get("Locations",
-                                     "user_folder",
-                                     "Test"),
-            "graphicstype":CFpars.get("Graphics",
-                                      "type",
-                                      "png"),
-            "windowposition":splitnumbers(CFpars.get("GUI",
-                                                     "position",
-                                                     "800,600,0,0")),
-            "controls":splitcontrols(CFpars.get("Controls",
-                                                "controls",
-                                                "YPD, YPD 30C, "
-                                                "COM, COM 30C"))}
+            "target_directory":safeget("Locations",
+                                       "target_directory",
+                                       find_rootdir()),
+            "source_directory":safeget("Locations",
+                                       "source_directory",
+                                       None),
+            "user_folder":safeget("Locations",
+                                  "user_folder",
+                                  "Test"),
+            "graphicstype":safeget("Graphics",
+                                   "type",
+                                   "png"),
+            "windowposition":splitnumbers(safeget("GUI",
+                                                  "position",
+                                                  "800,600,0,0")),
+            "controls":splitcontrols(safeget("Controls",
+                                             "controls",
+                                             "YPD, YPD 30C, "
+                                             "COM, COM 30C")),
+            "phenotypehandlers":splitvalues(getall("PhenotypeHandlers",
+                                            {"!default":"AverageWithoutAgarAtTimeCalc"})),
+            "combifilevisualizations":splitvalues(getall("CombiFileVisualizations",
+                                            {"!default":"EmptyPlateView, "
+                                             "PrintingQuality, "
+                                             "FinalGrowth, Animation_Temp, "
+                                             "CurvesWithoutAgar_PrintedMass, "
+                                             "CurvesWithoutAgar_Groups, "
+                                             "CurvesWithoutAgar_Slopes, "
+                                             "CurvesWithoutAgar_Lags, "
+                                             "CurvesNormalized_PrintedMass, "
+                                             "Histogram_MaxChange, "
+                                             "Scatterplot_PlatedMass_Lag, "
+                                             "ReplicatePlots"}))}
     return output
 
 def check_and_fix_paths(create_userfolders=True):

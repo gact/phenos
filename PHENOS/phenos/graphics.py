@@ -18,13 +18,13 @@ import matplotlib.pylab as pylab
 import gc
 from scipy.stats import norm
 #phenos
-from core import LOG,setup_logging,log_uncaught_exceptions,flatten,filterdict,get_traceback,get_config_dict
+from core import LOG,setup_logging,log_uncaught_exceptions,flatten,filterdict,get_traceback,get_config_dict,smooth_series,delta_series,antimirror_before_zero
 
 # #############################################################################
 
 filename = os.path.basename(__file__)
 authors = ("David B. H. Barton")
-version = "2.6"
+version = "2.7"
 
 # ###########################################################################
 def display_image(filepath,figsize=(14,9),aspect=1):
@@ -56,13 +56,14 @@ def split_text(txt,maxwidth,split_preferences=["-","/"]):
     return "".join(output)
 
 def get_checked_savepath(graphicobject,**kwargs):
-    savepath=kwargs.get("savepath",graphicobject.get_graphicspath(**kwargs))
+    savepath=kwargs.get("savepath",
+                        graphicobject.get_graphicspath(**kwargs))
     if not savepath:
         LOG.error("no savepath ({}) returned by {}({})"
                   .format(savepath,
                           type(graphicobject),
                           graphicobject.value))
-        return False
+        return None
     if os.path.exists(savepath):
         if not kwargs.get("overwrite",False):
             LOG.warning("savepath ({}) already exists"
@@ -152,6 +153,11 @@ def flagargs(flagslist):
 
 def get_graphicstype():
     return get_config_dict()["graphicstype"]
+
+def update_with_named_kwargs(kwargs,namedkwargs):
+    output=kwargs.copy()
+    output.update({k:v for k,v in namedkwargs.items() if k!="self"})
+    return output
 #
 
 #GENERAL ####################################################################
@@ -1402,7 +1408,7 @@ class CurvePlot(PlateView):
         self.figure=pyplt.figure(figsize=self.figsize)
         self.axes=self.figure.add_subplot(111)
         self.figure.patch.set_facecolor(self.backgroundcolor)
-        self.transform_timevalues()
+        self.check_bounds()
         
         self.main_sequence()
 
@@ -1429,6 +1435,14 @@ class CurvePlot(PlateView):
         self.blank_canvas()
         self.main_sequence()
 
+    def check_bounds(self):
+        self.transform_timevalues()
+        if not self.xbounds:
+            self.xbounds=(self.minLx,self.maxLx+1)
+        if not self.ybounds:
+            flaty=flatten(self.measurements)
+            self.ybounds=(min(flaty),max(flaty))
+
     def transform_timevalues(self):
         if type(self.timevalues[0]) in [list,tuple]:
             flatx=flatten(self.timevalues)
@@ -1436,8 +1450,6 @@ class CurvePlot(PlateView):
             flatx=self.timevalues[:]
             self.timevalues=[self.timevalues for x in self.measurements]
         self.minLx,self.maxLx=min(flatx),max(flatx)
-        if self.xbounds is None:
-            self.xbounds=(self.minLx,self.maxLx+1)
 
     def main_sequence(self):
         self.axes.axis(list(self.xbounds)+list(self.ybounds))
@@ -1720,6 +1732,7 @@ class Scatterplot(PlateView):
         self.figure=pyplt.figure(figsize=self.figsize)
         self.axes=self.figure.add_subplot(111)
         self.figure.patch.set_facecolor(self.backgroundcolor)
+        self.check_bounds()
         self.axes.axis(list(self.xbounds)+list(self.ybounds))
         self.axes.set_xlabel(self.xaxislabel)
         self.axes.set_ylabel(self.yaxislabel)
@@ -1729,6 +1742,12 @@ class Scatterplot(PlateView):
                             loc=self.titleloc,
                             fontsize=self.titlefontsize)
         self.main_sequence()
+
+    def check_bounds(self):
+        if not self.xbounds:
+            self.xbounds=(min(self.xvalues),max(self.xvalues))
+        if not self.ybounds:
+            self.ybounds=(min(self.yvalues),max(self.yvalues))
 
     def main_sequence(self):
         self.nunits=max([len(self.xvalues),len(self.yvalues)])
@@ -1773,527 +1792,6 @@ class Scatterplot(PlateView):
 #
 
 #DBTYPE FUNCTIONS ###########################################################
-def plateview_emptyOLD(combifileob,
-                    prefix="1_EmptyPlate",
-                    suffix="agar absorbance (0.2-0.3)",
-                    extension=get_graphicstype(),
-                    **kwargs):
-    kwargs.update(locals().copy())
-    savepath=get_checked_savepath(combifileob,**kwargs)
-
-    if savepath or kwargs.get("overwrite",False):
-        recs=list(combifileob.yield_records())
-        CV=[cr["emptymeasure"].value for cr in recs]
-        kwargs2=dict(coords=combifileob.get_coords(),
-                     radiusbounds=(0,combifileob["platedx"].value),
-                     colorvalues=CV,
-                     colorvaluebounds=(0.2,0.3),
-                     legendlabel='emptymeasure',
-                     colorscheme="Oranges",
-                     colorschemebounds=(0.3,0.7),
-                     labels=[cr["wellname"].value for cr in recs],
-                     title=combifileob.get_graphicstitle(**kwargs),
-                     savepath=savepath)
-        kwargs2.update(kwargs)
-        try:
-            pv=PlateView(**kwargs2)
-            return True
-        except Exception as e:
-            return False
-
-def plateview_emptylocalOLD(combifileob,
-                         prefix="1b_EmptyPlate",
-                         suffix="agar absorbance local min-max",
-                         extension=get_graphicstype(),
-                         **kwargs):
-    kwargs.update(locals().copy())
-    savepath=get_checked_savepath(combifileob,**kwargs)
-
-    if savepath or kwargs.get("overwrite",False):
-        recs=list(combifileob.yield_records())
-        CV=[cr["emptymeasure"].value for cr in recs]
-        kwargs2=dict(coords=combifileob.get_coords(),
-                     radiusbounds=(0,combifileob["platedx"].value),
-                     colorvalues=CV,
-                     legendlabel='emptymeasure',
-                     colorscheme="Oranges",
-                     colorschemebounds=(0.3,0.7),
-                     labels=[cr["wellname"].value for cr in recs],
-                     title=combifileob.get_graphicstitle(**kwargs),
-                     savepath=savepath)
-        kwargs2.update(kwargs)
-        try:
-            pv=PlateView(**kwargs2)
-            return True
-        except Exception as e:
-            return False
-
-def plateview_platedOLD(combifileob,
-                     prefix="2_PrintingQuality",
-                     suffix="scaled by printedmass (scale=0-1.0) "
-                            "colored by local min-max",
-                     extension=get_graphicstype(),
-                     **kwargs):
-    kwargs.update(locals().copy())
-    savepath=get_checked_savepath(combifileob,**kwargs)
-
-    if savepath or kwargs.get("overwrite",False):
-        recs=list(combifileob.yield_records())
-        PMV=[cr["platedmass"].value for cr in recs]
-        kwargs2=dict(coords=combifileob.get_coords(),
-                     scalevalues=PMV,
-                     scalevaluebounds=(0,1.0),
-                     radiusbounds=(0,combifileob["platedx"].value/2.0),
-                     colorvalues=PMV,
-                     legendlabel='printedmass local min-max',
-                     labels=[cr["strain"].value for cr in recs],
-                     labelfontalpha=0.75,
-                     labeldepth=1.2,
-                     title=combifileob.get_graphicstitle(**kwargs),
-                     savepath=savepath)
-        kwargs2.update(kwargs)
-        try:
-            pv=PlateView(**kwargs2)
-            return True
-        except Exception as e:
-            return False
-#
-def plateview_plate(plateob,
-                    show=True,
-                    savepath=False,
-                    **kwargs):
-    kwargs.update(locals().copy())
-    savepath=get_checked_savepath(plateob,**kwargs)
-
-    if savepath or kwargs.get("overwrite",False):
-        recs=list(plateob.yield_records())
-        kwargs2=dict(coords=plateob.get_coords(),
-                     scalevalues=None,
-                     colorvalues=None,
-                     legendlabel='emptymeasure',
-                     labels=[cr["wellname"].value for cr in recs],
-                     labelfontsize=8,
-                     labelfontcolor='black',
-                     backgroundcolor='white',
-                     title=plateob.get_graphicstitle(**kwargs),
-                     savepath=savepath)
-        kwargs2.update(kwargs)
-        try:
-            pv=PlateView(**kwargs2)
-            return True
-        except Exception as e:
-            return False
-
-def plateview_layout(platelayoutob,
-                     **kwargs):
-    kwargs.update(locals().copy())
-    savepath=get_checked_savepath(platelayoutob,**kwargs)
-
-    if savepath or kwargs.get("overwrite",False):
-        recs=list(platelayoutob.yield_records())
-        kwargs2=dict(coords=platelayoutob.get_coords(),
-                     scalevalues=None,
-                     colorvalues=None,
-                     legendlabel='emptymeasure',
-                     labels=[cr["strain"].value for cr in recs],
-                     labelfontsize=8,
-                     title=platelayoutob.get_graphicstitle(**kwargs),
-                     savepath=savepath)
-        kwargs2.update(kwargs)
-        try:
-            pv=PlateView(**kwargs2)
-            return True
-        except Exception as e:
-            return False
-#
-def plateview_empty(combifileob,
-                    prefix="1_EmptyPlate",
-                    suffix="agar absorbance",
-                    extension=get_graphicstype(),
-                    **kwargs):
-    kwargs.update(locals().copy())
-    savepath=get_checked_savepath(combifileob,**kwargs)
-
-    if savepath or kwargs.get("overwrite",False):
-        recs=list(combifileob.yield_records())
-        CV=[cr["emptymeasure"].value for cr in recs]
-        maxrad=combifileob["platedx"].value/2.2
-        kwargs2=dict(coords=combifileob.get_coords(),
-                     scalevalues=CV,
-                     icon="square",
-                     radiusbounds=(maxrad/2,maxrad),
-                     colorvalues=CV,
-                     colorvaluebounds=(0.1,0.5),
-                     legendlabel='emptymeasure',
-                     colorscheme="Oranges",
-                     colorschemebounds=(0.2,0.8),
-                     labels=[cr["wellname"].value for cr in recs],
-                     labelfontsize=8,
-                     title=combifileob.get_graphicstitle(**kwargs),
-                     savepath=savepath)
-        kwargs2.update(kwargs)
-        try:
-            pv=PlateView(**kwargs2)
-            return True
-        except Exception as e:
-            return False
-
-def plateview_plated(combifileob,
-                     prefix="2_PrintingQuality",
-                     suffix="scaled by printedmass local min-max "
-                            "colored by printedmass (scale=0-1.0)",
-                     extension=get_graphicstype(),
-                     **kwargs):
-    kwargs.update(locals().copy())
-    savepath=get_checked_savepath(combifileob,**kwargs)
-    
-    if savepath or kwargs.get("overwrite",False):
-        recs=list(combifileob.yield_records())
-        PMV=[cr["platedmass"].value for cr in recs]
-        kwargs2=dict(coords=combifileob.get_coords(),
-                     scalevalues=clip_to_limits(PMV,floor=0),
-                     radiusbounds=(0,combifileob["platedx"].value/2.0),
-                     colorvalues=PMV,
-                     colorvaluebounds=(0,0.6),
-                     colorschemebounds=(1.0,0.0),
-                     invertcolorbar=True,
-                     legendlabel='printedmass',
-                     labels=[cr["strain"].value for cr in recs],
-                     labelfontsize=6,
-                     labelfontalpha=0.75,
-                     labeldepth=1.2,
-                     title=combifileob.get_graphicstitle(**kwargs),
-                     savepath=savepath)
-        kwargs2.update(kwargs)
-        try:
-            pv=PlateView(**kwargs2)
-            return True
-        except Exception as e:
-            return False
-
-def plateview_final(combifileob,
-                    prefix="3_FinalGrowth",
-                    suffix="scaled by maximumwithoutagar",
-                    extension=get_graphicstype(),
-                    **kwargs):
-    kwargs.update(locals().copy())
-    savepath=get_checked_savepath(combifileob,**kwargs)
-
-    if savepath or kwargs.get("overwrite",False):
-        recs=list(combifileob.yield_records())
-        kwargs2=dict(coords=combifileob.get_coords(),
-                     scalevalues=[cr["maximumwithoutagar"] for cr in recs],
-                     radiusbounds=(0,combifileob["platedx"].value/2.0),
-                     scalevaluebounds=(0,5.0),
-                     colorvalues='white',
-                     flagvalues=[cr.should_ignore() for cr in recs],
-                     title=combifileob.get_graphicstitle(**kwargs),
-                     savepath=savepath)
-        kwargs2.update(kwargs)
-        try:
-            pv=PlateView(**kwargs2)
-            return True
-        except Exception as e:
-            return False
-
-def plateview_mixed(combifileob,
-                    prefix="3_FinalGrowth",
-                    suffix="scaled by maximumwithoutagar, "
-                           "colored by printedmass",
-                    extension=get_graphicstype(),
-                    **kwargs):
-    kwargs.update(locals().copy())
-    savepath=get_checked_savepath(combifileob,**kwargs)
-
-    if savepath or kwargs.get("overwrite",False):
-        recs=list(combifileob.yield_records())
-        kwargs2=dict(coords=combifileob.get_coords(),
-                     scalevalues=[cr["maximumwithoutagar"] for cr in recs],
-                     radiusbounds=(0,combifileob["platedx"].value/2.0),
-                     scalevaluebounds=(0,5.0),
-                     colorvalues=[cr["platedmass"].value for cr in recs],
-                     colorscheme="rainbow",
-                     legendlabel='printedmass',
-                     title=combifileob.get_graphicstitle(**kwargs),
-                     savepath=savepath)
-        kwargs2.update(kwargs)
-        try:
-            pv=PlateView(**kwargs2)
-            return True
-        except Exception as e:
-            return False
-
-def plateview_experimentratios(controlexpob,
-                               prefix="9_ControlledRatios",
-                               extension=get_graphicstype(),
-                               **kwargs):
-    kwargs.setdefault("suffix","at {:.1f}+-{:.1f}hrs "
-                               "scaled by finalaverage"
-                               .format(controlexpob["timefocus"].value,
-                                       controlexpob["plusminus"].value))
-    kwargs.update(locals().copy())
-    savepath=get_checked_savepath(controlexpob,**kwargs)
-
-    if savepath or kwargs.get("overwrite",False):
-        recs=list(controlexpob.yield_records())
-        kwargs2=dict(coords=controlexpob.get_coords(),
-                     scalevalues=[cr["finalaverage"].value for cr in recs],
-                     radiusbounds=(0.5,controlexpob["platedx"].value/2.0),
-                     scalevaluebounds=(0,3.0),
-                     colorvalues=[cr["ratio"].value for cr in recs],
-                     colorscheme="RdYlGn",
-                     colorvaluebounds=(0.0,1.5), #fixed color scale
-                     colorschemebounds=(0.0,1.0),
-                     legendlabel='growth ratio (treatment/control)',
-                     labels=[cr["strain"].value for cr in recs],
-                     labelfontsize=8,
-                     labelfontcolor='CadetBlue',
-                     title=controlexpob.get_graphicstitle(**kwargs),
-                     savepath=savepath)
-        kwargs2.update(kwargs)
-        try:
-            pv=PlateView(**kwargs2)
-            return True
-        except Exception as e:
-            return False
-#
-def plateanimate_basic(combifileob,
-                       prefix="4_Animation",
-                       suffix="minusagar",
-                       extension="mp4",
-                       show=False,
-                       **kwargs):
-    kwargs.update(locals().copy())
-    savepath=get_checked_savepath(combifileob,**kwargs)
-
-    if savepath or kwargs.get("overwrite",False):
-        recs=list(combifileob.yield_records())
-        kwargs2=dict(coords=combifileob.get_coords(),
-                     labels=[cr["strain"].value for cr in recs],
-                     labelframes=40,
-                     scaleseries=[cr["rawmeasuredvaluesminusagar"]
-                                  for cr in recs],
-                     colorseries='white',
-                     finalframes=30,
-                     timeseries=combifileob.timevalues(),
-                     xbounds=(0,127.76),    #standard plate breadth
-                     ybounds=(0,85.48),     #standard plate width
-                     radiusbounds=(0,2.25), #standard 384 maxradius
-                     colorscheme="RdBu",
-                     colorschemebounds=(1.0,0.0),
-                     legendlabel='Temperature (C)',
-                     title=combifileob.get_graphicstitle(**kwargs),
-                     savepath=savepath)
-        kwargs2.update(kwargs)
-        try:
-            pa=PlateAnimation(**kwargs2)
-            return True
-        except Exception as e:
-            return False
-
-def plateanimate_temp(combifileob,
-                      prefix="4_Animation",
-                      suffix="minusagar, "
-                             "colored by temperature",
-                      extension="mp4",
-                      show=False,
-                      **kwargs):
-    kwargs.update(locals().copy())
-    savepath=get_checked_savepath(combifileob,**kwargs)
-
-    if savepath or kwargs.get("overwrite",False):
-        recs=list(combifileob.yield_records())
-        kwargs2=dict(coords=combifileob.get_coords(),
-                     labels=[cr["strain"].value for cr in recs],
-                     labelframes=40,
-                     scaleseries=[cr["rawmeasuredvaluesminusagar"]
-                                  for cr in recs],
-                     colorseries=combifileob.tempvalues() or 'white',
-                     colorvaluebounds=(25.0,35.0),
-                     finalframes=30,
-                     timeseries=combifileob.timevalues(),
-                     xbounds=(0,127.76),    #standard plate breadth
-                     ybounds=(0,85.48),     #standard plate width
-                     radiusbounds=(0,2.25), #standard 384 maxradius
-                     colorscheme="RdBu",
-                     colorschemebounds=(1.0,0.0),
-                     legendlabel='Temperature (C)',
-                     title=combifileob.get_graphicstitle(**kwargs),
-                     savepath=savepath)
-        kwargs2.update(kwargs)
-        try:
-            pa=PlateAnimation(**kwargs2)
-            return True
-        except Exception as e:
-            return False
-#
-def curveplot_basic(combifileob,
-                    prefix="5_Curves",
-                    suffix="minusagar, "
-                           "colored by printedmass",
-                    **kwargs):
-    kwargs.update(locals().copy())
-    savepath=get_checked_savepath(combifileob,**kwargs)
-
-    if savepath or kwargs.get("overwrite",False):
-        recs=list(combifileob.yield_records())
-        kwargs2=dict(timevalues=combifileob.timevalues(),
-                     measurements=[cr["rawmeasuredvaluesminusagar"]
-                                   for cr in recs],
-                     yaxislabel='OD600 minus agar',
-                     colorvalues=[cr["platedmass"].value
-                                  for cr in recs],
-                     colorvaluebounds=(0.0,0.6),
-                     colorschemebounds=(1.0,0.0),
-                     invertcolorbar=True,
-                     legendlabel='printedmass',
-                     title=combifileob.get_graphicstitle(**kwargs),
-                     savepath=savepath)
-        kwargs2.update(kwargs)
-        try:
-            cp=CurvePlot(**kwargs2)
-            return True
-        except Exception as e:
-            return False
-
-def curveplot_grouped(combifileob,
-                      prefix="5_Curves",
-                      suffix="minusagar, "
-                             "colored by groupname",
-                    **kwargs):
-    kwargs.update(locals().copy())
-    savepath=get_checked_savepath(combifileob,**kwargs)
-    print savepath
-
-    if savepath or kwargs.get("overwrite",False):
-        recs=list(combifileob.yield_records())
-        kwargs2=dict(timevalues=combifileob.timevalues(),
-                     measurements=[cr["rawmeasuredvaluesminusagar"]
-                                   for cr in recs],
-                     yaxislabel='OD600 minus agar',
-                     colorvalues=[cr["readinggroup"].value
-                                  for cr in recs],
-                     legendlabel='groupname',
-                     title=combifileob.get_graphicstitle(**kwargs),
-                     savepath=savepath)
-        kwargs2.update(kwargs)
-        try:
-            cp=CurvePlot(**kwargs2)
-            return True
-        except Exception as e:
-            return False
-
-def curveplot_normalized(combifileob,
-                         prefix="6_Curves",
-                         suffix="measuredvalues, "
-                                "colored by printedmass",
-                         **kwargs):
-    kwargs.update(locals().copy())
-    savepath=get_checked_savepath(combifileob,**kwargs)
-
-    if savepath or kwargs.get("overwrite",False):
-        recs=list(combifileob.yield_records())
-        kwargs2=dict(timevalues=combifileob.timevalues(),
-                     measurements=[cr["measuredvalues"]
-                                   for cr in recs],
-                     yaxislabel='change in OD600 from minimum',
-                     colorvalues=[cr["platedmass"].value
-                                  for cr in recs],
-                     colorvaluebounds=(0.0,0.6),
-                     colorschemebounds=(1.0,0.0),
-                     invertcolorbar=True,
-                     legendlabel='printedmass',
-                     title=combifileob.get_graphicstitle(**kwargs),
-                     savepath=savepath)
-        kwargs2.update(kwargs)
-        try:
-            cp=CurvePlot(**kwargs2)
-            return True
-        except Exception as e:
-            return False
-
-def curveplot_allreplicates(combifileob,
-                            suffix="rawmeasuredvalueswithoutagar, "
-                                   "colored by printedmass",
-                            pathformatter="{plotfolder}/{userfolder}/"
-                                          "{experimentfolder}/ReplicatePlots/"
-                                          "{prefix}{graphicsnameroot}"
-                                          "{suffix}.{extension}",
-                            **kwargs):
-    namedkwargs=locals().copy()
-    unnamedkwargs=kwargs.copy()
-    kwargs.update(namedkwargs)
-    
-    #check for existing
-    RFP=os.path.join(combifileob.get_plotssubfolderpath(),
-                     "ReplicatePlots")
-    if os.path.exists(RFP):
-        filecount=len([name for name in os.listdir(RFP)
-                       if os.path.isfile(os.path.join(RFP,name))])
-        if filecount==combifileob["platelayout"].nstrains():
-            LOG.warning("found correct number of replicateplots for {} "
-                        "already"
-                        .format(combifileob.value))
-            return True
-    else:
-        os.makedirs(RFP)
-
-    #if it got this far: tally strains in combifileob
-    straindict={}
-    for record in combifileob.yield_records():
-        if record["strain"].value not in straindict:
-            straindict[record["strain"].value]=[record]
-        else:
-            straindict[record["strain"].value].append(record)
-    curveplotobject=None
-    nreplicateplots=0
-    for strainname,recs in straindict.items():
-        kwargs["prefix"]=strainname
-        #savepath=combifileob.get_graphicspath(**kwargs)
-        savepath=get_checked_savepath(combifileob,**kwargs)
-        title=combifileob.get_graphicstitle(**kwargs)
-        if curveplotobject is None:
-            #print "FIRST PLOT"+"_"*50
-            ncpkwargs=dict(timevalues=combifileob.timevalues(),
-                           measurements=[cr["rawmeasuredvaluesminusagar"]
-                                         for cr in recs],
-                           colorvalues=[cr["platedmass"].value
-                                        for cr in recs],
-                           yaxislabel='OD600 minus agar',
-                           legendlabel='printedmass',
-                           colorscheme="rainbow",
-                           colorvaluebounds=(0.0,0.6),
-                           colorschemebounds=(1.0,0.0),
-                           invertcolorbar=True,
-                           labels=[cr["wellname"].value
-                                   for cr in recs],
-                           title=title,
-                           savepath=savepath)
-            ncpkwargs.update(kwargs)
-            curveplotobject=CurvePlot(**ncpkwargs)
-            nreplicateplots+=1
-        else:
-            #print "SECOND PLOT"+"_"*50
-            ncpkwargs=dict(timevalues=combifileob.timevalues(),
-                           measurements=[cr["rawmeasuredvaluesminusagar"]
-                                         for cr in recs],
-                           colorvalues=[cr["platedmass"].value
-                                        for cr in recs],
-                           labels=[cr["wellname"].value
-                                   for cr in recs],
-                           title=title,
-                           savepath=savepath)
-            ncpkwargs.update(unnamedkwargs)
-            curveplotobject(**ncpkwargs)
-            nreplicateplots+=1
-            #break
-        #
-    
-    pyplt.close('all')
-    del curveplotobject
-    gc.collect()
-    return nreplicateplots
-
 def curveplot_allstrains(combireadingstab,
                          strainstab,
                          pathformatter="{plotfolder}/{userfolder}/"
@@ -2383,7 +1881,7 @@ def curveplot_strain(strainob,
     kwargs.update(namedkwargs)
     savepath=get_checked_savepath(strainob,**kwargs)
 
-    if savepath or kwargs.get("overwrite",False):
+    if savepath!=False or kwargs.get("overwrite",False):
         recs=list(strainob.yield_records())
         ncpkwargs=dict(timevalues=[cr.timevalues() for cr in recs],
                        measurements=[cr["rawmeasuredvaluesminusagar"]
@@ -2405,123 +1903,693 @@ def curveplot_strain(strainob,
             return False
 
 #
-def histogram_basic(combifileob,
-                    prefix="7_Histogram",
-                    **kwargs):
-    kwargs.update(locals().copy())
-    savepath=get_checked_savepath(combifileob,**kwargs)
 
-    if savepath or kwargs.get("overwrite",False):
-        recs=list(combifileob.yield_records())
-        kwargs2=dict(values=[rec["maximumchange"] for rec in recs],
-                     nbins=11,
-                     color='green',
-                     orientation='horizontal',
-                     xbounds=(0,2.5),
-                     ybounds=(0,3.5),  #standard measurement range
-                     yaxislabel='Maximum change in OD600',
-                     xaxislabel='n',
-                     title=combifileob.get_graphicstitle(**kwargs),
-                     savepath=savepath)
-        kwargs2.update(kwargs)
-        try:
-            hg=Histogram(**kwargs2)
-            return True
-        except Exception as e:
-            return False
-#
-def scatterplot_basic(combifileob,
-                      prefix="8_Scatterplot",
-                      suffix="scaled by printedmass",
-                      **kwargs):
-    kwargs.update(locals().copy())
-    savepath=get_checked_savepath(combifileob,**kwargs)
+#VIEW WRAPPERS ##########################################################
+class ViewWrapper(object):
+    pass
 
-    if savepath or kwargs.get("overwrite",False):
-        recs=list(combifileob.yield_records())
-        XV=[rec["maximumchange"] for rec in recs]
-        YV=[rec["maximumwithoutagar"] for rec in recs]
-        SV=[rec["platedmass"].value for rec in recs]
-        FCV=[rec["distancefromedge"].value for rec in recs]
-        #ECV=[str(rec["isborder"].value) for rec in recs]
+class AgarThickness(ViewWrapper):
+    def __init__(self,combifileob,
+                 extension=get_graphicstype(),
+                 **kwargs):
+        kwargs=update_with_named_kwargs(kwargs,locals())
+        kwargs.setdefault("prefix",self.__class__.__name__)
+        savepath=get_checked_savepath(combifileob,**kwargs)
+        if savepath!=False or kwargs.get("overwrite",False):
+            recs=list(combifileob.yield_records())
+            CV=[cr["emptymeasure"].value for cr in recs]
+            maxrad=combifileob["platedx"].value/2.2
+            kwargs2=dict(coords=combifileob.get_coords(),
+                         scalevalues=CV,
+                         icon="square",
+                         radiusbounds=(maxrad/2,maxrad),
+                         colorvalues=CV,
+                         colorvaluebounds=(0.1,0.5),
+                         legendlabel='absorbance of unprinted agar',
+                         colorscheme="Oranges",
+                         colorschemebounds=(0.2,0.8),
+                         labels=[cr["wellname"].value for cr in recs],
+                         labelfontsize=8,
+                         title=combifileob.get_graphicstitle(**kwargs),
+                         savepath=savepath)
+            kwargs2.update(kwargs)
+            try:
+                viewob=PlateView(**kwargs2)
+                del viewob
+                self.worked=True
+            except Exception as e:
+                self.worked=False
+                self.error=e,get_traceback()
 
-        kwargs2=dict(xvalues=XV,
-                     yvalues=YV,
-                     scalevalues=SV,
-                     scalevaluebounds=(0,2),
-                     radiusbounds=(10,40),
-                     facecolorvalues=FCV,
-                     legendlabel='distancefromedge (mm)',
-                     #edgecolorvalues=ECV,
-                     alphavalues=1.0,
-                     colorscheme='rainbow',
-                     xbounds=(0,3.0),
-                     ybounds=(0,3.5),  #standard measurement range
-                     #colorvaluebounds=None,
-                     xaxislabel='Maximum change in OD600',
-                     yaxislabel='Maximum value without agar',
-                     title=combifileob.get_graphicstitle(**kwargs),
-                     savepath=savepath)
-        kwargs2.update(kwargs)
-        try:
-            sp=Scatterplot(**kwargs2)
-            return True
-        except Exception as e:
-            return False
-#
+class LayoutView(ViewWrapper):
+    def __init__(self,
+                 obwithlayout,
+                 **kwargs):
+        kwargs=update_with_named_kwargs(kwargs,locals())
+        kwargs.setdefault("prefix",self.__class__.__name__)
+        savepath=get_checked_savepath(obwithlayout,**kwargs)
+        if savepath!=False or kwargs.get("overwrite",False):
+            recs=list(obwithlayout.yield_records())
+            kwargs2=dict(coords=obwithlayout.get_coords(),
+                         scalevalues=None,
+                         colorvalues=None,
+                         legendlabel=None,
+                         labels=[cr["strain"].value for cr in recs],
+                         labelfontsize=8,
+                         title=obwithlayout.get_graphicstitle(**kwargs),
+                         savepath=savepath)
+            kwargs2.update(kwargs)
+            try:
+                viewob=PlateView(**kwargs2)
+                del viewob
+                self.worked=True
+            except Exception as e:
+                self.worked=False
+                self.error=e,get_traceback()
+
+class PrintingQuality(ViewWrapper):
+    def __init__(self,combifileob,
+                 suffix="scaled by printedmass local min-max "
+                        "colored by printedmass (scale=0-0.6)",
+                 extension=get_graphicstype(),
+                 **kwargs):
+        kwargs=update_with_named_kwargs(kwargs,locals())
+        kwargs.setdefault("prefix",self.__class__.__name__)
+        savepath=get_checked_savepath(combifileob,**kwargs)
+        if savepath!=False or kwargs.get("overwrite",False):
+            recs=list(combifileob.yield_records())
+            PMV=[cr["platedmass"].value for cr in recs] #in the database, it is 'platedmass' for legacy reasons
+            kwargs2=dict(coords=combifileob.get_coords(),
+                         scalevalues=clip_to_limits(PMV,floor=0),
+                         radiusbounds=(0,combifileob["platedx"].value/2.0),
+                         colorvalues=PMV,
+                         colorvaluebounds=(0,0.6),
+                         colorschemebounds=(1.0,0.0),
+                         invertcolorbar=True,
+                         legendlabel='printedmass',
+                         labels=[cr["strain"].value for cr in recs],
+                         labelfontsize=6,
+                         labelfontalpha=0.75,
+                         labeldepth=1.2,
+                         title=combifileob.get_graphicstitle(**kwargs),
+                         savepath=savepath)
+            kwargs2.update(kwargs)
+            try:
+                viewob=PlateView(**kwargs2)
+                del viewob
+                self.worked=True
+            except Exception as e:
+                self.worked=False
+                self.error=e,get_traceback()
+
+class FinalGrowth(ViewWrapper):
+    def __init__(self,combifileob,
+                 suffix="scaled by maximumwithoutagar",
+                 extension=get_graphicstype(),
+                 **kwargs):
+        kwargs=update_with_named_kwargs(kwargs,locals())
+        kwargs.setdefault("prefix",self.__class__.__name__)
+        savepath=get_checked_savepath(combifileob,**kwargs)
+        if savepath!=False or kwargs.get("overwrite",False):
+            recs=list(combifileob.yield_records())
+            kwargs2=dict(coords=combifileob.get_coords(),
+                         scalevalues=[cr["maximumwithoutagar"] for cr in recs],
+                         radiusbounds=(0,combifileob["platedx"].value/2.0),
+                         scalevaluebounds=(0,5.0),
+                         colorvalues='white',
+                         flagvalues=[cr.should_ignore() for cr in recs],
+                         title=combifileob.get_graphicstitle(**kwargs),
+                         savepath=savepath)
+            kwargs2.update(kwargs)
+            try:
+                viewob=PlateView(**kwargs2)
+                del viewob
+                self.worked=True
+            except Exception as e:
+                self.worked=False
+                self.error=e,get_traceback()
+
+class FinalGrowth_PrintedMass(ViewWrapper):
+    def __init__(self,combifileob,
+                 suffix="scaled by maximumwithoutagar, colored by printedmass",
+                 extension=get_graphicstype(),
+                 **kwargs):
+        kwargs=update_with_named_kwargs(kwargs,locals())
+        kwargs.setdefault("prefix",self.__class__.__name__)
+        savepath=get_checked_savepath(combifileob,**kwargs)
+        if savepath!=False or kwargs.get("overwrite",False):
+            recs=list(combifileob.yield_records())
+            kwargs2=dict(coords=combifileob.get_coords(),
+                         scalevalues=[cr["maximumwithoutagar"] for cr in recs],
+                         radiusbounds=(0,combifileob["platedx"].value/2.0),
+                         scalevaluebounds=(0,5.0),
+                         colorvalues=[cr["platedmass"].value for cr in recs],
+                         colorscheme="rainbow",
+                         legendlabel='printedmass',
+                         labels=[cr["strain"].value for cr in recs],
+                         labelfontsize=8,
+                         flagvalues=[cr.should_ignore() for cr in recs],
+                         title=combifileob.get_graphicstitle(**kwargs),
+                         savepath=savepath)
+            kwargs2.update(kwargs)
+            try:
+                viewob=PlateView(**kwargs2)
+                del viewob
+                self.worked=True
+            except Exception as e:
+                self.worked=False
+                self.error=e,get_traceback()
+
+class FinalGrowth_Lag(ViewWrapper):
+    def __init__(self,combifileob,
+                 suffix="scaled by maximumwithoutagar, colored by lag",
+                 extension=get_graphicstype(),
+                 **kwargs):
+        kwargs=update_with_named_kwargs(kwargs,locals())
+        kwargs.setdefault("prefix",self.__class__.__name__)
+        savepath=get_checked_savepath(combifileob,**kwargs)
+        if savepath!=False or kwargs.get("overwrite",False):
+            recs=list(combifileob.yield_records())
+            kwargs2=dict(coords=combifileob.get_coords(),
+                         scalevalues=[cr["maximumwithoutagar"] for cr in recs],
+                         radiusbounds=(0,combifileob["platedx"].value/2.0),
+                         scalevaluebounds=(0,5.0),
+                         colorvalues=[cr.get_lag() for cr in recs],
+                         colorscheme="rainbow",
+                         legendlabel='lag',
+                         labels=[cr["strain"].value for cr in recs],
+                         labelfontsize=8,
+                         flagvalues=[cr.should_ignore() for cr in recs],
+                         title=combifileob.get_graphicstitle(**kwargs),
+                         savepath=savepath)
+            kwargs2.update(kwargs)
+            try:
+                viewob=PlateView(**kwargs2)
+                del viewob
+                self.worked=True
+            except Exception as e:
+                self.worked=False
+                self.error=e,get_traceback()
+
+class FinalGrowth_MaxSlope(ViewWrapper):
+    def __init__(self,combifileob,
+                 suffix="scaled by maximumwithoutagar, colored by maxslope",
+                 extension=get_graphicstype(),
+                 **kwargs):
+        kwargs=update_with_named_kwargs(kwargs,locals())
+        kwargs.setdefault("prefix",self.__class__.__name__)
+        savepath=get_checked_savepath(combifileob,**kwargs)
+        if savepath!=False or kwargs.get("overwrite",False):
+            recs=list(combifileob.yield_records())
+            kwargs2=dict(coords=combifileob.get_coords(),
+                         scalevalues=[cr["maximumwithoutagar"] for cr in recs],
+                         radiusbounds=(0,combifileob["platedx"].value/2.0),
+                         scalevaluebounds=(0,5.0),
+                         colorvalues=[cr.get_maxslope() for cr in recs],
+                         colorscheme="rainbow",
+                         legendlabel='maxslope',
+                         labels=[cr["strain"].value for cr in recs],
+                         labelfontsize=8,
+                         flagvalues=[cr.should_ignore() for cr in recs],
+                         title=combifileob.get_graphicstitle(**kwargs),
+                         savepath=savepath)
+            kwargs2.update(kwargs)
+            try:
+                viewob=PlateView(**kwargs2)
+                del viewob
+                self.worked=True
+            except Exception as e:
+                self.worked=False
+                self.error=e,get_traceback()
+
+class Animation(ViewWrapper):
+    def __init__(self,combifileob,
+                 suffix="measures without agar",
+                 extension="mp4",**kwargs):
+        kwargs=update_with_named_kwargs(kwargs,locals())
+        kwargs.setdefault("prefix",self.__class__.__name__)
+        savepath=get_checked_savepath(combifileob,**kwargs)
+        if savepath!=False or kwargs.get("overwrite",False):
+            recs=list(combifileob.yield_records())
+            kwargs2=dict(show=False,
+                         coords=combifileob.get_coords(),
+                         labels=[cr["strain"].value for cr in recs],
+                         labelframes=40,
+                         scaleseries=[cr["rawmeasuredvaluesminusagar"]
+                                      for cr in recs],
+                         colorseries='white',
+                         finalframes=30,
+                         timeseries=combifileob.timevalues(),
+                         xbounds=(0,127.76),    #standard plate breadth
+                         ybounds=(0,85.48),     #standard plate width
+                         radiusbounds=(0,2.25), #standard 384 maxradius
+                         title=combifileob.get_graphicstitle(**kwargs),
+                         savepath=savepath)
+            kwargs2.update(kwargs)
+            try:
+                viewob=PlateAnimation(**kwargs2)
+                del viewob
+                self.worked=True
+            except Exception as e:
+                self.worked=False
+                self.error=e,get_traceback()
+
+class Animation_Temp(ViewWrapper):
+    def __init__(self,combifileob,
+                 suffix="measures without agar, colored by temperature",
+                 extension="mp4",**kwargs):
+        kwargs=update_with_named_kwargs(kwargs,locals())
+        kwargs.setdefault("prefix",self.__class__.__name__)
+        savepath=get_checked_savepath(combifileob,**kwargs)
+        if savepath!=False or kwargs.get("overwrite",False):
+            recs=list(combifileob.yield_records())
+            kwargs2=dict(show=False,
+                         coords=combifileob.get_coords(),
+                         labels=[cr["strain"].value for cr in recs],
+                         labelframes=40,
+                         scaleseries=[cr["rawmeasuredvaluesminusagar"]
+                                      for cr in recs],
+                         colorseries=combifileob.tempvalues() or 'white',
+                         colorvaluebounds=(25.0,35.0),
+                         finalframes=30,
+                         timeseries=combifileob.timevalues(),
+                         xbounds=(0,127.76),    #standard plate breadth
+                         ybounds=(0,85.48),     #standard plate width
+                         radiusbounds=(0,2.25), #standard 384 maxradius
+                         colorscheme="RdBu",
+                         colorschemebounds=(1.0,0.0),
+                         legendlabel='Temperature (C)',
+                         title=combifileob.get_graphicstitle(**kwargs),
+                         savepath=savepath)
+            kwargs2.update(kwargs)
+            try:
+                viewob=PlateAnimation(**kwargs2)
+                del viewob
+                self.worked=True
+            except Exception as e:
+                self.worked=False
+                self.error=e,get_traceback()
+
+class CurvesWithoutAgar_PrintedMass(ViewWrapper):
+    def __init__(self,combifileob,
+                 suffix="colored by printedmass",**kwargs):
+        kwargs=update_with_named_kwargs(kwargs,locals())
+        kwargs.setdefault("prefix",self.__class__.__name__)
+        savepath=get_checked_savepath(combifileob,**kwargs)
+        if savepath!=False or kwargs.get("overwrite",False):
+            recs=list(combifileob.yield_records())
+            kwargs2=dict(timevalues=combifileob.timevalues(),
+                         measurements=[cr["rawmeasuredvaluesminusagar"]
+                                       for cr in recs],
+                         yaxislabel='OD600 minus agar',
+                         colorvalues=[cr["platedmass"].value
+                                      for cr in recs],
+                         colorvaluebounds=(0.0,0.6),
+                         colorschemebounds=(1.0,0.0),
+                         invertcolorbar=True,
+                         legendlabel='printedmass',
+                         title=combifileob.get_graphicstitle(**kwargs),
+                         savepath=savepath)
+            kwargs2.update(kwargs)
+            try:
+                viewob=CurvePlot(**kwargs2)
+                del viewob
+                self.worked=True
+            except Exception as e:
+                self.worked=False
+                self.error=e,get_traceback()
+
+class CurvesWithoutAgar_Groups(ViewWrapper):
+    def __init__(self,combifileob,
+                 suffix="colored by groupname",**kwargs):
+        kwargs=update_with_named_kwargs(kwargs,locals())
+        kwargs.setdefault("prefix",self.__class__.__name__)
+        savepath=get_checked_savepath(combifileob,**kwargs)
+        if savepath!=False or kwargs.get("overwrite",False):
+            recs=list(combifileob.yield_records())
+            kwargs2=dict(timevalues=combifileob.timevalues(),
+                         measurements=[cr["rawmeasuredvaluesminusagar"]
+                                       for cr in recs],
+                         yaxislabel='OD600 minus agar',
+                         colorvalues=[cr["readinggroup"].value
+                                      for cr in recs],
+                         legendlabel='groupname',
+                         title=combifileob.get_graphicstitle(**kwargs),
+                         savepath=savepath)
+            kwargs2.update(kwargs)
+            try:
+                viewob=CurvePlot(**kwargs2)
+                del viewob
+                self.worked=True
+            except Exception as e:
+                self.worked=False
+                self.error=e,get_traceback()
+
+class CurvesWithoutAgar_Slopes(ViewWrapper):
+    def __init__(self,combifileob,
+                 suffix="colored by maxslope",**kwargs):
+        kwargs=update_with_named_kwargs(kwargs,locals())
+        kwargs.setdefault("prefix",self.__class__.__name__)
+        savepath=get_checked_savepath(combifileob,**kwargs)
+        if savepath!=False or kwargs.get("overwrite",False):
+            recs=list(combifileob.yield_records())
+            kwargs2=dict(timevalues=combifileob.timevalues(),
+                         measurements=[cr["rawmeasuredvaluesminusagar"]
+                                       for cr in recs],
+                         yaxislabel='OD600 minus agar',
+                         colorvalues=[cr.get_maxslope()
+                                      for cr in recs],
+                         colorschemebounds=(1.0,0.0),
+                         invertcolorbar=True,
+                         legendlabel='slope',
+                         title=combifileob.get_graphicstitle(**kwargs),
+                         savepath=savepath)
+            kwargs2.update(kwargs)
+            try:
+                viewob=CurvePlot(**kwargs2)
+                del viewob
+                self.worked=True
+            except Exception as e:
+                self.worked=False
+                self.error=e,get_traceback()
+
+class CurvesWithoutAgar_Lags(ViewWrapper):
+    def __init__(self,combifileob,
+                 suffix="colored by lag",**kwargs):
+        kwargs=update_with_named_kwargs(kwargs,locals())
+        kwargs.setdefault("prefix",self.__class__.__name__)
+        savepath=get_checked_savepath(combifileob,**kwargs)
+        if savepath!=False or kwargs.get("overwrite",False):
+            recs=list(combifileob.yield_records())
+            kwargs2=dict(timevalues=combifileob.timevalues(),
+                         measurements=[cr["rawmeasuredvaluesminusagar"]
+                                       for cr in recs],
+                         yaxislabel='OD600 minus agar',
+                         colorvalues=[cr.get_lag()
+                                      for cr in recs],
+                         colorschemebounds=(1.0,0.0),
+                         invertcolorbar=True,
+                         legendlabel='slope',
+                         title=combifileob.get_graphicstitle(**kwargs),
+                         savepath=savepath)
+            kwargs2.update(kwargs)
+            try:
+                viewob=CurvePlot(**kwargs2)
+                del viewob
+                self.worked=True
+            except Exception as e:
+                self.worked=False
+                self.error=e,get_traceback()
+
+class CurvesNormalized_PrintedMass(ViewWrapper):
+    def __init__(self,combifileob,**kwargs):
+        kwargs=update_with_named_kwargs(kwargs,locals())
+        kwargs.setdefault("prefix",self.__class__.__name__)
+        savepath=get_checked_savepath(combifileob,**kwargs)
+        if savepath!=False or kwargs.get("overwrite",False):
+            recs=list(combifileob.yield_records())
+            kwargs2=dict(timevalues=combifileob.timevalues(),
+                         measurements=[cr["measuredvalues"]
+                                       for cr in recs],
+                         yaxislabel='change in OD600 from minimum',
+                         colorvalues=[cr["platedmass"].value
+                                      for cr in recs],
+                         colorvaluebounds=(0.0,0.6),
+                         colorschemebounds=(1.0,0.0),
+                         invertcolorbar=True,
+                         legendlabel='printedmass',
+                         title=combifileob.get_graphicstitle(**kwargs),
+                         savepath=savepath)
+            kwargs2.update(kwargs)
+            try:
+                viewob=CurvePlot(**kwargs2)
+                del viewob
+                self.worked=True
+            except Exception as e:
+                self.worked=False
+                self.error=e,get_traceback()
+
+class Histogram_MaxWithoutAgar(ViewWrapper):
+    def __init__(self,combifileob,**kwargs):
+        kwargs=update_with_named_kwargs(kwargs,locals())
+        kwargs.setdefault("prefix",self.__class__.__name__)
+        savepath=get_checked_savepath(combifileob,**kwargs)
+        if savepath!=False or kwargs.get("overwrite",False):
+            recs=list(combifileob.yield_records())
+            kwargs2=dict(values=[rec["maximumwithoutagar"] for rec in recs],
+                         nbins=11,
+                         color='green',
+                         orientation='horizontal',
+                         xbounds=(0,2.5),
+                         ybounds=(0,3.5),  #standard measurement range
+                         yaxislabel='Maximum OD600  minus agar',
+                         xaxislabel='n',
+                         title=combifileob.get_graphicstitle(**kwargs),
+                         savepath=savepath)
+            kwargs2.update(kwargs)
+            try:
+                viewob=Histogram(**kwargs2)
+                del viewob
+                self.worked=True
+            except Exception as e:
+                self.worked=False
+                self.error=e,get_traceback()
+
+class Histogram_MaxChange(ViewWrapper):
+    def __init__(self,combifileob,**kwargs):
+        kwargs=update_with_named_kwargs(kwargs,locals())
+        kwargs.setdefault("prefix",self.__class__.__name__)
+        savepath=get_checked_savepath(combifileob,**kwargs)
+        if savepath!=False or kwargs.get("overwrite",False):
+            recs=list(combifileob.yield_records())
+            kwargs2=dict(values=[rec["maximumchange"] for rec in recs],
+                         nbins=11,
+                         color='green',
+                         orientation='horizontal',
+                         xbounds=(0,2.5),
+                         ybounds=(0,3.5),  #standard measurement range
+                         yaxislabel='Maximum change in OD600',
+                         xaxislabel='n',
+                         title=combifileob.get_graphicstitle(**kwargs),
+                         savepath=savepath)
+            kwargs2.update(kwargs)
+            try:
+                viewob=Histogram(**kwargs2)
+                del viewob
+                self.worked=True
+            except Exception as e:
+                self.worked=False
+                self.error=e,get_traceback()
+
+class Scatterplot_PrintedMass_Lag(ViewWrapper):
+    def __init__(self,combifileob,
+                 suffix="scaled by maximumwithoutagar",**kwargs):
+        kwargs=update_with_named_kwargs(kwargs,locals())
+        kwargs.setdefault("prefix",self.__class__.__name__)
+        savepath=get_checked_savepath(combifileob,**kwargs)
+        if savepath!=False or kwargs.get("overwrite",False):
+            recs=list(combifileob.yield_records())
+            XV=[rec["get_lag"] for rec in recs]
+            if set(XV)==set([False]):
+                LOG.error("No lag calculations possible for {} "
+                          "with timepoints {}"
+                          .format(combifileob.value,
+                                  str(combifileob.timevalues())))
+                return False
+            if max(XV)>max(combifileob.timevalues()):
+                XBOUNDS=(0,max(combifileob.timevalues()))
+            else:
+                XBOUNDS=None
+            YV=[rec["platedmass"].value for rec in recs]
+            SV=[rec["maximumwithoutagar"] for rec in recs]
+            FCV=[rec["get_maxslope"] for rec in recs]
+            #ECV=[str(rec["isborder"].value) for rec in recs]
+
+            kwargs2=dict(xvalues=XV,
+                         yvalues=YV,
+                         scalevalues=SV,
+                         scalevaluebounds=(0,2),
+                         radiusbounds=(10,60),
+                         facecolorvalues=FCV,
+                         legendlabel='maximum slope (OD change/hr)',
+                         #edgecolorvalues=ECV,
+                         alphavalues=1.0,
+                         colorscheme='rainbow',
+                         xbounds=XBOUNDS,#
+                         ybounds=None,  #
+                         #colorvaluebounds=None,
+                         xaxislabel='lag (hrs)',
+                         yaxislabel='printed mass',
+                         title=combifileob.get_graphicstitle(**kwargs),
+                         savepath=savepath)
+            kwargs2.update(kwargs)
+            try:
+                viewob=Scatterplot(**kwargs2)
+                del viewob
+                self.worked=True
+            except Exception as e:
+                self.worked=False
+                self.error=e,get_traceback()
+
+class ReplicatePlots(ViewWrapper):
+    def __init__(self,combifileob,
+                 suffix="measures without agar",
+                 pathformatter="{plotfolder}/{userfolder}/"
+                               "{experimentfolder}/ReplicatePlots/"
+                               "{prefix}{graphicsnameroot}"
+                               "{suffix}.{extension}",
+                 **kwargs):
+        unnamedkwargs=kwargs.copy()
+        kwargs=update_with_named_kwargs(kwargs,locals())
+        kwargs["number"]=None
+        #check for existing
+        RFP=os.path.join(combifileob.get_plotssubfolderpath(),
+                         "ReplicatePlots")
+        if os.path.exists(RFP):
+            filecount=len([name for name in os.listdir(RFP)
+                           if os.path.isfile(os.path.join(RFP,name))])
+            if filecount==combifileob["platelayout"].nstrains():
+                LOG.warning("found correct number of replicateplots for {} "
+                            "already"
+                            .format(combifileob.value))
+                return True
+        else:
+            os.makedirs(RFP)
+
+        #if it got this far: tally strains in combifileob
+        straindict={}
+        for record in combifileob.yield_records():
+            if record["strain"].value not in straindict:
+                straindict[record["strain"].value]=[record]
+            else:
+                straindict[record["strain"].value].append(record)
+        curveplotobject=None
+        self.nreplicateplots=0
+        for strainname,recs in straindict.items():
+            kwargs["prefix"]=strainname
+            #savepath=combifileob.get_graphicspath(**kwargs)
+            savepath=get_checked_savepath(combifileob,**kwargs)
+            title=combifileob.get_graphicstitle(**kwargs)
+            if curveplotobject is None:
+                #print "FIRST PLOT"+"_"*50
+                ncpkwargs=dict(timevalues=combifileob.timevalues(),
+                               measurements=[cr["rawmeasuredvaluesminusagar"]
+                                             for cr in recs],
+                               colorvalues=[cr["platedmass"].value
+                                            for cr in recs],
+                               yaxislabel='OD600 minus agar',
+                               legendlabel='printedmass',
+                               colorscheme="rainbow",
+                               colorvaluebounds=(0.0,0.6),
+                               colorschemebounds=(1.0,0.0),
+                               invertcolorbar=True,
+                               labels=[cr["wellname"].value
+                                       for cr in recs],
+                               title=title,
+                               savepath=savepath)
+                ncpkwargs.update(kwargs)
+                curveplotobject=CurvePlot(**ncpkwargs)
+                self.nreplicateplots+=1
+            else:
+                #print "SECOND PLOT"+"_"*50
+                ncpkwargs=dict(timevalues=combifileob.timevalues(),
+                               measurements=[cr["rawmeasuredvaluesminusagar"]
+                                             for cr in recs],
+                               colorvalues=[cr["platedmass"].value
+                                            for cr in recs],
+                               labels=[cr["wellname"].value
+                                       for cr in recs],
+                               title=title,
+                               savepath=savepath)
+                ncpkwargs.update(unnamedkwargs)
+                curveplotobject(**ncpkwargs)
+                self.nreplicateplots+=1
+        
+        pyplt.close('all')
+        del curveplotobject
+        gc.collect()
+
+class ControlledRatios(ViewWrapper):
+    def __init__(self,controlexpob,
+                 extension=get_graphicstype(),**kwargs):
+        kwargs=update_with_named_kwargs(kwargs,locals())
+        kwargs.setdefault("prefix",self.__class__.__name__)
+        kwargs.setdefault("suffix",
+                          "at {:.1f}+-{:.1f}hrs "
+                          "scaled by finalaverage"
+                          .format(controlexpob["timefocus"].value,
+                                  controlexpob["plusminus"].value))
+        savepath=get_checked_savepath(controlexpob,**kwargs)
+        if savepath!=False or kwargs.get("overwrite",False):
+            recs=list(controlexpob.yield_records())
+            kwargs2=dict(coords=controlexpob.get_coords(),
+                         scalevalues=[cr["finalaverage"].value for cr in recs],
+                         radiusbounds=(0.5,controlexpob["platedx"].value/2.0),
+                         scalevaluebounds=(0,3.0),
+                         colorvalues=[cr["ratio"].value for cr in recs],
+                         colorscheme="RdYlGn",
+                         colorvaluebounds=(0.0,1.5), #fixed color scale
+                         colorschemebounds=(0.0,1.0),
+                         legendlabel='growth ratio (treatment/control)',
+                         labels=[cr["strain"].value for cr in recs],
+                         labelfontsize=8,
+                         labelfontcolor='CadetBlue',
+                         title=controlexpob.get_graphicstitle(**kwargs),
+                         savepath=savepath)
+            kwargs2.update(kwargs)
+            try:
+                viewob=PlateView(**kwargs2)
+                del viewob
+                self.worked=True
+            except Exception as e:
+                self.worked=False
+                self.error=e,get_traceback()
+
+class CurveAnalysis(ViewWrapper):
+    def __init__(self,combireadingob,
+                 suffix="measures without agar",
+                 **kwargs):
+        kwargs=update_with_named_kwargs(kwargs,locals())
+        kwargs.setdefault("prefix",self.__class__.__name__)
+        savepath=get_checked_savepath(combireadingob,**kwargs)
+        if savepath!=False or kwargs.get("overwrite",False):
+            cr=combireadingob
+            RM=cr.rawmeasuredvaluesminusagar()
+            T=cr.timevalues()
+            smoothedRM=smooth_series(RM,k=smoothing)
+            smoothedT=smooth_series(T,k=smoothing)
+            deltaRM=delta_series(smoothedRM)
+            interT=smooth_series(smoothedT,k=2)
+
+            iM,iT=cr.get_inflection(smoothing=smoothing)
+            lg=cr.get_lag()
+            kwargs2=dict(smoothing=20,
+                         timevalues=[T,smoothedT,interT],
+                         measurements=[RM,smoothedRM,deltaRM],
+                         yaxislabel='OD600 minus agar',
+                         colorvalues=["black","red","green"],
+                         xgridlines=[iT,lg],
+                         colorvaluebounds=(0.0,0.6),
+                         colorschemebounds=(1.0,0.0),
+                         invertcolorbar=True,
+                         legendlabel='printedmass',
+                         title=combireadingob.get_graphicstitle(**kwargs),
+                         savepath=savepath)
+            kwargs2.update(kwargs)
+            try:
+                viewob=CurvePlot(**kwargs2)
+                del viewob
+                self.worked=True
+            except Exception as e:
+                self.worked=False
+                self.error=e,get_traceback()
+
 if __name__=="__main__":
-    setup_logging("CRITICAL")
+    setup_logging("INFO")
     sys.excepthook=log_uncaught_exceptions
     
     from dbtypes import *
 
-    import doctest
-    doctest.testmod()
+#    import doctest
+#    doctest.testmod()
 
-
-#    cf=CombiFiles()[-1]
-#    curveplot_allreplicates(cf)
-
-#    cp=CurvePlot(timevalues=[[1,2,3,4]], #xvalues
-#                 measurements=[[2,3,4,5],[4,5,6,7]], #yvalues
-#                 xbounds=(0,5),
-#                 ybounds=(0,8.0),
-#                 colorvalues=['a','c'],
-#                 markers=[(1,1),(2,2),(3,3)],
-#                 markercolorvalues=['yellow','yellow','yellow'],
-#                 savepath=None,
-#                 show=True)
-
-    #ce=ControlledExperiments()[0]
-    #ce.draw_ratios(show=True)
-
-#    pathformatter=os.path.join(Locations()["plots"],
-#                               "_Empty plate views",
-#                               "{userfolder}",
-#                               "EmptyPlate {graphicsn"
-#                               "ameroot}.{extension}")
-#    print plateview_empty(fo,pathformatter=pathformatter)
-
-#    fo=Files()[0]
-#    fo.draw_if_empty(show=True)
-
-#    pp=plateview_plate(Plates()[0])
-#    pl=plateview_layout(PlateLayouts()[0])
-
-#    cf=CombiFiles()[-1]
-
-#    pv1=plateview_empty(cf,show=True,savepath=None)
-#    pv2=plateview_plated(cf,show=True,savepath=None)
-#    pv3=plateview_final(cf,show=True,savepath=None)
-#    pv4=plateview_mixed(cf,show=True,savepath=None)
-#    pa1=plateanimate_temp(cf)
-#    cp1=curveplot_basic(cf,show=True,savepath=None)
-#    cp2=curveplot_grouped(cf,show=True,savepath=None)
-#    cp3=curveplot_normalized(cf,show=True,savepath=None)
-#    cp4=curveplot_allreplicates(cf)
-#    hg1=histogram_basic(cf,show=True,savepath=None)
-#    sp1=scatterplot_basic(cf,show=True,savepath=None)#
-
-#    ef=ControlledExperiments()[-1]
-
-#    pv5=plateview_experimentratios(ef,show=True,savepath=None)
