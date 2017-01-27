@@ -309,15 +309,22 @@ def find_rootdir(searchdir=None):
     return rootdir
 
 def get_config_filepath():
-    #Thanks Tom Walsh for this!
+    """
+    Thanks Tom Walsh for this!
+    If the config file doesn't exist at the proper location,
+    but does exist in the script directory or level above
+    then it will be copied into the proper location.
+    A shortcut will also be created.
+    """
     platform_system=platform.system()
+    configfilename="config.txt"
     if platform_system!='Windows':
         raise RuntimeError("unsupported platform: {!r}".format(platform_system))
     else:
         appdata=os.getenv('APPDATA')
         if appdata is None or not os.path.isdir(appdata):
             raise RuntimeError("%APPDATA% environment variable is invalid or undefined")
-        config_filepath=os.path.join(appdata,'PHENOS','config.txt')
+        config_filepath=os.path.join(appdata,'PHENOS',configfilename)
         if os.path.exists(config_filepath):
             try:
                 LOG.info("Found config file at {}".format(config_filepath))
@@ -325,14 +332,26 @@ def get_config_filepath():
                 pass
             return config_filepath
         else:
-            config_filepath=os.path.join(scriptdir(),'PHENOS','config.txt')
-            if os.path.exists(config_filepath):
-                try:
-                    LOG.info("Found config file in script directory at {}"
-                             .format(config_filepath))
-                except:
-                    pass
-                return config_filepath
+            #LOOK FOR CONFIG IN OR ABOVE SCRIPT DIRECTORY
+            SCD=scriptdir()
+            possible=[os.path.join(SCD,configfilename),
+                      os.path.join(os.path.dirname(SCD),configfilename)]
+            foundpath=None
+            for P in possible:
+                LOG.info("Looking for {} in scriptdir() {}"
+                         .format(configfilename,SCD))
+                if os.path.exists(P):
+                    foundpath=P
+                    break
+            if foundpath:
+                copy_to(foundpath,config_filepath)
+                LOG.info("Copied config file from {} to {}"
+                         .format(foundpath,config_filepath))
+            else:
+                LOG.critical("Can't find config.txt in {} or {}"
+                             .format(foundpath,config_filepath))
+                sys.exit()
+        return config_filepath
 
 def get_config_dict():
     CFpth=get_config_filepath()
@@ -739,8 +758,9 @@ class DirectoryWrapper(object):
 
 #MAIN #########################################################################
 if __name__=='__main__':
-    setup_logging("CRITICAL")
+    setup_logging("DEBUG")
     sys.excepthook=log_uncaught_exceptions
 
+    get_config_filepath()
     #import doctest
     #doctest.testmod()
