@@ -758,9 +758,8 @@ class DirectoryWrapper(object):
 
 #MAIN #########################################################################
 if __name__=='__main__':
-    setup_logging("DEBUG")
+    setup_logging("CRITICAL")
     sys.excepthook=log_uncaught_exceptions
 
-    get_config_filepath()
     #import doctest
     #doctest.testmod()
