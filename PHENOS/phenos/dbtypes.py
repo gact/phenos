@@ -2444,7 +2444,7 @@ class rQTLinputReader(GenotypeData):
         elif T=="CombiReadings":
             SFN=""
             if not args:
-                args=[PlatedMassCalc,PlatedMassControlledCalc]
+                args=[PrintedMassCalc,PrintedMassControlledCalc]
 
         phenotypecalculators=[a(ob) for a in args]
         
@@ -8019,7 +8019,7 @@ class CombiFile(DBRecord,GraphicGenerator):
     def scatterplot(self,**kwargs):
         if self["timespan"].is_sufficient(fortext="scatterplot"):
             try:
-                return Scatterplot_PlatedMass_Lag(self,**kwargs)
+                return Scatterplot_PrintedMass_Lag(self,**kwargs)
             except Exception as e:
                 LOG.info("couldn't scatterplot {}: {}".format(self.value,e))
                 return False
@@ -11294,6 +11294,13 @@ class Autocurator(object):
 if __name__=='__main__':
     setup_logging("CRITICAL")
     sys.excepthook=log_uncaught_exceptions
+
+#    p="D:\PHENOS3\ALLSCATTERS"
+#    CF=CombiFiles("MA")
+#    for cf in CF:
+#        cf.scatterplot(savepath=os.path.join(p,"{}.jpg".format(cf.value)),
+#                                             extension="jpg")
+    
 
 #    ce=ControlledExperiments()["MA125abc_MA36ab"]
 #    print ce["combifile"].illustrate(overwrite=True)
