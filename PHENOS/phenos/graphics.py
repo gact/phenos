@@ -2548,6 +2548,7 @@ class ControlledRatios(ViewWrapper):
 class CurveAnalysis(ViewWrapper):
     def __init__(self,combireadingob,
                  suffix="measures without agar",
+                 smoothing=15,
                  **kwargs):
         kwargs=update_with_named_kwargs(kwargs,locals())
         kwargs.setdefault("prefix",self.__class__.__name__)
@@ -2563,11 +2564,11 @@ class CurveAnalysis(ViewWrapper):
 
             iM,iT=cr.get_inflection(smoothing=smoothing)
             lg=cr.get_lag()
-            kwargs2=dict(smoothing=20,
+            kwargs2=dict(smoothing=smoothing,
                          timevalues=[T,smoothedT,interT],
                          measurements=[RM,smoothedRM,deltaRM],
-                         yaxislabel='OD600 minus agar',
                          colorvalues=["black","red","green"],
+                         yaxislabel='OD600 minus agar',
                          xgridlines=[iT,lg],
                          colorvaluebounds=(0.0,0.6),
                          colorschemebounds=(1.0,0.0),
