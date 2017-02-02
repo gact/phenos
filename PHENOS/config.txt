@@ -5,6 +5,7 @@ user_folder = Test
 
 [Graphics]
 type = png
+!available = png, jpg, eps
 
 [GUI]
 position = 1100,800,50,50
