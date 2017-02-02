@@ -2562,7 +2562,11 @@ class CurveAnalysis(ViewWrapper):
             deltaRM=delta_series(smoothedRM)
             interT=smooth_series(smoothedT,k=2)
 
-            iM,iT=cr.get_inflection(smoothing=smoothing)
+            gI=cr.get_inflection(smoothing=smoothing)
+            if gI:
+                iM,iT=gI
+            else:
+                iM,iT=None,None
             lg=cr.get_lag()
             kwargs2=dict(smoothing=smoothing,
                          timevalues=[T,smoothedT,interT],

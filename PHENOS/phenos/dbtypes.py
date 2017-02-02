@@ -7262,9 +7262,11 @@ class LagCalc(PhenotypeCalculator):
     def get_phenotype_list(self,record):
         assert record.__class__.__name__ in self.allowed
         output=record.get_lag()
-        if type(output)==float:
-            return [output]
-        return [""]
+        try:
+            output=[float(output)]
+        except Exception as e:
+            output=[""]
+        return output
 
 class MaxSlopeCalc(PhenotypeCalculator):
     allowed=["CombiReading","ControlledReading"]
@@ -7279,9 +7281,12 @@ class MaxSlopeCalc(PhenotypeCalculator):
     def get_phenotype_list(self,record):
         assert record.__class__.__name__ in self.allowed
         output=record.get_maxslope()
-        if type(output)==float:
-            return [output]
-        return [""]
+        try:
+            output=[float(output)]
+        except Exception as e:
+            output=[""]
+        return output
+
 
 class DifferentialTimeCalc(PhenotypeCalculator):
     allowed=["CombiReading","ControlledReading"]
@@ -10261,7 +10266,9 @@ class CombiReading(Reading,GraphicGenerator):
             dM=delta_series(SM)
             if not dM:
                 return False
-            peakdMi=find_first_peak(dM[1:])+1
+            temp=find_first_peak(dM[1:])
+            if not temp: return False
+            peakdMi=temp+1
             #print peakdMi,dM[peakdMi]
             #print
             neighbouringtimepoints=ST[peakdMi-1:peakdMi+1]
@@ -11294,20 +11301,6 @@ class Autocurator(object):
 if __name__=='__main__':
     setup_logging("INFO")#CRITICAL")
     sys.excepthook=log_uncaught_exceptions
-
-#    p="D:\PHENOS3\ALLHISTOGRAMS"
-#    CF=CombiFiles("DG")
-#    for cf in CF:
-#        cf.histogram(savepath=os.path.join(p,"{}.jpg".format(cf.value)),
-#                     extension="jpg")
-
-
-#    ce=ControlledExperiments()["MA125abc_MA36ab"]
-#    print ce["combifile"].illustrate(overwrite=True)
-    #ce.output_to_rQTL()
-#    Locations().change("Software Test")
-#    import doctest
-#    doctest.testmod()
 
     #Data from http://www.yeastgenome.org/search?q=paraquat&is_quick=true
 #    paraquatresistancedecreased=['CCS1','FRS2','IRA2','NAR1','POS5','PUT1','RNR4','SOD1','SOD2','UTH1']
