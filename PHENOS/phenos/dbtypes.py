@@ -11292,15 +11292,15 @@ class Autocurator(object):
 
 #MAIN #########################################################################
 if __name__=='__main__':
-    setup_logging("CRITICAL")
+    setup_logging("INFO")#CRITICAL")
     sys.excepthook=log_uncaught_exceptions
 
-#    p="D:\PHENOS3\ALLSCATTERS"
-#    CF=CombiFiles("MA")
+#    p="D:\PHENOS3\ALLHISTOGRAMS"
+#    CF=CombiFiles("DG")
 #    for cf in CF:
-#        cf.scatterplot(savepath=os.path.join(p,"{}.jpg".format(cf.value)),
-#                                             extension="jpg")
-    
+#        cf.histogram(savepath=os.path.join(p,"{}.jpg".format(cf.value)),
+#                     extension="jpg")
+
 
 #    ce=ControlledExperiments()["MA125abc_MA36ab"]
 #    print ce["combifile"].illustrate(overwrite=True)

@@ -12,7 +12,7 @@ from collections import defaultdict
 from matplotlib import use as mpluse
 mpluse('PS')
 import matplotlib.pyplot as pyplt
-import win32com
+import win32com.client
 
 
 # #############################################################################
@@ -308,7 +308,7 @@ def find_rootdir(searchdir=None):
             break
     return rootdir
 
-def get_config_filepath():
+def get_config_filepath(filename="config.txt"):
     """
     Thanks Tom Walsh for this!
     If the config file doesn't exist at the proper location,
@@ -317,7 +317,7 @@ def get_config_filepath():
     A shortcut will also be created.
     """
     platform_system=platform.system()
-    configfilename="config.txt"
+    configfilename=filename
     if platform_system!='Windows':
         raise RuntimeError("unsupported platform: {!r}".format(platform_system))
     else:
@@ -333,25 +333,46 @@ def get_config_filepath():
             return config_filepath
         else:
             #LOOK FOR CONFIG IN OR ABOVE SCRIPT DIRECTORY
-            SCD=scriptdir()
-            possible=[os.path.join(SCD,configfilename),
-                      os.path.join(os.path.dirname(SCD),configfilename)]
-            foundpath=None
-            for P in possible:
-                LOG.info("Looking for {} in scriptdir() {}"
-                         .format(configfilename,SCD))
-                if os.path.exists(P):
-                    foundpath=P
-                    break
-            if foundpath:
-                copy_to(foundpath,config_filepath)
-                LOG.info("Copied config file from {} to {}"
-                         .format(foundpath,config_filepath))
-            else:
-                LOG.critical("Can't find config.txt in {} or {}"
-                             .format(foundpath,config_filepath))
-                sys.exit()
+            setup_config_txt(destinationpath=config_filepath)
         return config_filepath
+
+def get_desktop_dirpath():
+    platform_system=platform.system()
+    if platform_system!='Windows':
+        raise RuntimeError("unsupported platform: {!r}".format(platform_system))
+    else:
+        return os.path.normpath(os.path.expanduser('~\Desktop'))
+
+def setup_config_txt(destinationpath):
+    """
+    If necessary, copies filename from above scriptdir to appdata
+    folder and creates shortcut from that to the desktop
+    """
+    appdatadir,filename=os.path.split(destinationpath)
+    SCD=scriptdir()
+    possible=[os.path.join(SCD,filename),
+              os.path.join(os.path.dirname(SCD),filename)]
+    foundpath=None
+    for P in possible:
+        LOG.info("Looking for {}"
+                 .format(P))
+        if os.path.exists(P):
+            foundpath=P
+            break
+    if foundpath:
+        copy_to(foundpath,destinationpath)
+        LOG.info("Copied {} from {} to {}"
+                 .format(filename,foundpath,destinationpath))
+        desktopshortcutpath=os.path.join(get_desktop_dirpath(),
+                                         "Shortcut to {}.lnk"
+                                         .format(filename))
+        create_Windows_shortcut(destinationpath,
+                                desktopshortcutpath,
+                                report=True)
+    else:
+        LOG.critical("Can't find {} in {} or {}"
+                     .format(filename,foundpath,config_filepath))
+        sys.exit()
 
 def get_config_dict():
     CFpth=get_config_filepath()
@@ -758,8 +779,10 @@ class DirectoryWrapper(object):
 
 #MAIN #########################################################################
 if __name__=='__main__':
-    setup_logging("CRITICAL")
+    setup_logging("INFO")#CRITICAL")
     sys.excepthook=log_uncaught_exceptions
+
+    setup_config_txt(destinationpath="C:\Users\localadmin1\AppData\Roaming\PHENOS\config D.txt")
 
     #import doctest
     #doctest.testmod()
