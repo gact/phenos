@@ -15,7 +15,7 @@ controls = YPD, YPD 30C, COM, COM 30C, Control
 
 [PhenotypeHandlers]
 !default = TreatmentRatioCalc, LagCalc, MaxSlopeCalc
-!available = TreatmentRatioCalc, LagCalc, MaxSlopeCalc, AverageWithoutAgarCalc, MaximumChangeCalc, PrintedMassCalc, PrintedMassControlledCalc, DifferentialTimeCalc
+!available = MaximumChangeCalc, AverageWithoutAgarCalc, TreatmentRatioCalc, LagCalc, MaxSlopeCalc, MaxSlopeTimeCalc, DifferentialTimeCalc, PrintedMassCalc, PrintedMassControlledCalc, ShrinkageCalc, HalfPeakTimeCalc
 MMS.* = TreatmentRatioCalc, DifferentialTimeCalc
 
 [CombiFileVisualizations]
