@@ -2555,29 +2555,44 @@ class CurveAnalysis(ViewWrapper):
         savepath=get_checked_savepath(combireadingob,**kwargs)
         if savepath!=False or kwargs.get("overwrite",False):
             cr=combireadingob
-            RM=cr.rawmeasuredvaluesminusagar()
-            T=cr.timevalues()
-            smoothedRM=smooth_series(RM,k=smoothing)
-            smoothedT=smooth_series(T,k=smoothing)
-            deltaRM=delta_series(smoothedRM)
-            interT=smooth_series(smoothedT,k=2)
+            cr.get_inflection()
+            iD=getattr(cr,"iD",{})
+            M=iD.get("M",[])
+            T=iD.get("T",[])
+            if len(M)!=len(T):
+                LOG.error("Measures have len {} but Timevalues have len {}"
+                          .format(len(M),len(T)))
+                return
 
-            gI=cr.get_inflection(smoothing=smoothing)
-            if gI:
-                iM,iT=gI
-            else:
-                iM,iT=None,None
-            lg=cr.get_lag()
+            sM=iD.get("sM",[])
+            sT=iD.get("sT",[])
+            if len(sM)!=len(sT):
+                LOG.error("Smoothed measures have len {} but smoothed timevalues have len {}"
+                          .format(len(sM),len(sT)))
+                sM,sT=[],[]
+
+            DsM=iD.get("DsM",[])
+            DsT=iD.get("DsT",[])
+            if len(DsM)!=len(DsT):
+                LOG.error("Delta smoothed measures have len {} but delta smoothed timevalues have len {}"
+                          .format(len(DsM),len(DsT)))
+                DsM,DsT=[],[]
+
+
+            sDsM=iD.get("sDsM",[])
+            sDsT=iD.get("sDsT",[])
+            if len(sDsM)!=len(sDsT):
+                LOG.error("Smoothed delta smoothed measures have len {} but smoothed delta smoothed timevalues have len {}"
+                          .format(len(sDsM),len(sDsT)))
+                sDsM,sDsT=[],[]
+
             kwargs2=dict(smoothing=smoothing,
-                         timevalues=[T,smoothedT,interT],
-                         measurements=[RM,smoothedRM,deltaRM],
-                         colorvalues=["black","red","green"],
+                         measurements=[M,sM,DsM,sDsM],
+                         timevalues=[T,sT,DsT,sDsT],
+                         colorvalues=["black","red","violet","green"],
                          yaxislabel='OD600 minus agar',
-                         xgridlines=[iT,lg],
-                         colorvaluebounds=(0.0,0.6),
-                         colorschemebounds=(1.0,0.0),
-                         invertcolorbar=True,
-                         legendlabel='printedmass',
+                         xgridlines=[iD.get("inflectionT",-1),
+                                     iD.get("lagtime",-1)],
                          title=combireadingob.get_graphicstitle(**kwargs),
                          savepath=savepath)
             kwargs2.update(kwargs)
@@ -2594,6 +2609,11 @@ if __name__=="__main__":
     sys.excepthook=log_uncaught_exceptions
     
     from dbtypes import *
+
+    for r in range(4301,4311):
+        cr=CombiReadings("Controls")[r]
+        cr.plot(show=True,savepath=False)
+        #print cr.iD
 
 #    import doctest
 #    doctest.testmod()

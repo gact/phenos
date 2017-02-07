@@ -80,6 +80,45 @@ def calc_lag(slope,measureinflection,minimum,timeinflection):
     if np.isinf(timeofslopecrossingminimum): return None
     return timeofslopecrossingminimum
 
+def calc_inflection(measurements,timevalues,smoothing=15):
+    output={}
+    M=output["M"]=measurements
+    T=output["T"]=timevalues
+    sM=output["sM"]=smooth_series(M,k=smoothing)
+    sT=output["sT"]=smooth_series(T,k=smoothing)
+    DsM=output["DsM"]=delta_series(sM)
+    DsT=output["DsT"]=smooth_series(sT,k=2)
+    if not DsM: return output
+    sDsM=output["sDsM"]=smooth_series(DsM,k=2)
+    sDsT=output["sDsT"]=smooth_series(DsT,k=2)
+    sDsMpeakI=output["sDsMpeakI"]=find_first_peak(sDsM)
+    if not sDsMpeakI: return output
+    sDsMpeakM=output["sDsMpeakM"]=sDsM[sDsMpeakI]
+    sDsTpeakT=output["sDsTpeakT"]=sDsT[sDsMpeakI]
+    iMTi=output["iMTi"]=closest_index(T,sDsTpeakT)
+    inflectionT=output["inflectionT"]=T[iMTi]
+    inflectionM=output["inflectionM"]=M[iMTi]
+    M1,M2=M[iMTi-1],M[iMTi+1]
+    T1,T2=T[iMTi-1],T[iMTi+1]
+    C1,C2=cellcount_estimate(M1),cellcount_estimate(M2)
+    #print "1: {} ({}) @ {}".format(M1,C1,T1)
+    #print "2: {} ({}) @ {}".format(M2,C2,T2)
+    maxslope=output["maxMslope"]=calc_slope(M1,M2,T1,T2)
+    Cslope=output["maxCslope"]=calc_slope(C1,C2,T1,T2)
+    minminusagar=min(M)
+    maxchange=max(M)-minminusagar
+    #slopeC=cellcount_estimate(self.slope)
+    #print "MI {}, TI {}".format(self.measureinflection,
+    #                            self.timeinflection)
+    #print "Slopes {} ({})".format(self.slope,Cslope)#,slopeC)
+    lagtime=output["lagtime"]=calc_lag(maxslope,inflectionM,
+                                       minminusagar,inflectionT)
+    #print "lag {} hrs".format(self.lag)
+    halfmaxchange=maxchange/2.0
+    halfmaxchangeindex=closest_index(M,halfmaxchange)
+    halfpeaktime=output["halfpeaktime"]=T[halfmaxchangeindex]
+    return output
+
 def doubling_time(slope):
     """
     slope (change_in_rawmeasuredvalueminusagar / change_in_time)
@@ -782,7 +821,7 @@ if __name__=='__main__':
     setup_logging("INFO")#CRITICAL")
     sys.excepthook=log_uncaught_exceptions
 
-    setup_config_txt(destinationpath="C:\Users\localadmin1\AppData\Roaming\PHENOS\config D.txt")
+    #setup_config_txt(destinationpath="C:\Users\localadmin1\AppData\Roaming\PHENOS\config D.txt")
 
     #import doctest
     #doctest.testmod()

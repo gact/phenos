@@ -7192,6 +7192,13 @@ class AllProcessed(DBBool):
 #PHENOTYPE CALCULATORS ########################################################
 class PhenotypeCalculator(object):
     allowed=["Reading","CombiReading","ControlledReading"]
+
+    @classmethod
+    def all(cls,*readobjects):
+        for CL in cls.__subclasses__():
+            cl=CL(readobjects[0])
+            print CL.__name__,cl.get_header_list(),cl.get_phenotype_list(readobjects[-1])
+
     def __init__(self,experimentobject=None):
         for k,v in self.__class__.__dict__.items():
             if not type(v).__name__=="function":
@@ -7200,10 +7207,14 @@ class PhenotypeCalculator(object):
             self.experimentobject=experimentobject
 
     def find_timefocus(self):
-        if self.experimentobject.__class__.__name__=="ControlledExperiment":
+        try:
             self.timefocus=self.experimentobject["timefocus"].value
             self.plusminus=self.experimentobject["plusminus"].value
             self.maxtime=max(self.experimentobject.timevalues())
+        except:
+            self.timefocus=None
+            self.plusminus=None
+            self.maxtime=None
 
     def get_header_list(self):
         if not hasattr(self,"headers"):
@@ -7218,8 +7229,8 @@ class PhenotypeCalculator(object):
         return self.external
 
 class MaximumChangeCalc(PhenotypeCalculator):
-    internalheaderformat="MaximumChange({maxtime:.1f}hrs)"
-    externalheadercode="MxCh({timefocus:.1f}hrs)"
+    internalheaderformat="MaximumChange"
+    externalheadercode="MxCh"
 
     def get_phenotype_list(self,record):
         """
@@ -7274,19 +7285,35 @@ class MaxSlopeCalc(PhenotypeCalculator):
     externalheadercode="MxSl"
     def get_header_list(self):
         if not hasattr(self,"headers"):
-            self.find_timefocus()
             self.headers=[self.internalheaderformat]
         return self.headers
 
     def get_phenotype_list(self,record):
         assert record.__class__.__name__ in self.allowed
-        output=record.get_maxslope()
         try:
+            output=record.get_maxslope()
             output=[float(output)]
         except Exception as e:
             output=[""]
         return output
 
+class MaxSlopeTimeCalc(PhenotypeCalculator):
+    allowed=["CombiReading","ControlledReading"]
+    internalheaderformat="MaxSlopeTime(hr)"
+    externalheadercode="MxSlTm"
+    def get_header_list(self):
+        if not hasattr(self,"headers"):
+            self.headers=[self.internalheaderformat]
+        return self.headers
+
+    def get_phenotype_list(self,record):
+        assert record.__class__.__name__ in self.allowed
+        try:
+            record.get_inflection()
+            output=[record.inflectionT]
+        except Exception as e:
+            output=[""]
+        return output
 
 class DifferentialTimeCalc(PhenotypeCalculator):
     allowed=["CombiReading","ControlledReading"]
@@ -7295,9 +7322,9 @@ class DifferentialTimeCalc(PhenotypeCalculator):
     internalheaderformat="DifferentialTimeCalc({timefocus2:.1f}-{timefocus1:.1f}hrs (+-{plusminus:.1f}hrs))"
     externalheadercode="DT({timefocus2:.1f}-{timefocus1:.1f}hrs (+-{plusminus:.1f}hrs))"
 
-    def find_timefocus(self,report=True):
+    def find_timefocus(self,report=False):
         """
-        Assume 65 hours and 25 hours timepoints both present and return difference
+        Assume 47 hours and 25 hours timepoints both present and return difference
         """
         self.timefocus1=20.0
         self.timefocus2=47.0
@@ -7373,6 +7400,36 @@ class PrintedMassControlledCalc(PhenotypeCalculator):
         PM=float(record["platedmass"].value)
         return [PM-MC]
 
+class ShrinkageCalc(PhenotypeCalculator):
+    internalheaderformat="Shrinkage"
+    externalheadercode="Shrnk"
+    """
+    Calculates any drop in readings from the initial value (printed mass)
+    to the minimumwithoutagar value
+    """
+    def get_phenotype_list(self,record):
+        assert record.__class__.__name__ in self.allowed
+        try:
+            PM=float(record["platedmass"].value)
+            MWA=float(record["minimumwithoutagar"])
+            return [PM-MWA]
+        except:
+            return [""]
+
+class HalfPeakTimeCalc(PhenotypeCalculator):
+    internalheaderformat="HalfPeakTime (hr)"
+    externalheadercode="HlfPkTm"
+    """
+    The time at which the normalized measurements
+    reach half their maximum value.
+    """
+    def get_phenotype_list(self,record):
+        assert record.__class__.__name__ in self.allowed
+        try:
+            record.get_inflection()
+            return [record["halfpeaktime"]]
+        except:
+            return [""]
 #
 
 #COMBIFILES ###################################################################
@@ -8746,6 +8803,10 @@ class ControlledExperiment(CombiFile,GraphicGenerator):
                          .format(self.value,e,get_traceback()))
                 return False
 
+    def plot(self,**kwargs):
+        self["combifile"].plot(**kwargs)
+        self.get_control_combifile().plot(**kwargs)
+
     def plot_qtls(self,**kwargs):
         xs,ys,cs=[],[],[]
         for FS in self.yield_qtlsets():
@@ -10027,6 +10088,9 @@ class Reading(DBRecord):
     coltype=tbs.StringCol(40)
     strict=True
 
+    def get_parent(self):
+        return self["file"]
+
     def get_curve_dict(self,**kwargs):
         """
         A plotting class (e.g. Plot) can call this method
@@ -10177,6 +10241,9 @@ class CombiReading(Reading,GraphicGenerator):
     graphicsnamerootformat="{strain} {combifileid} {platelayout} ({treatment})"
     coltype=tbs.StringCol(40)
 
+    def get_parent(self):
+        return self["combifile"]
+
     def rawmeasuredvaluesminusagar(self):
         em=self["emptymeasure"].value or 0
         return [y-em for y in self.rawmeasuredvalues()]
@@ -10189,11 +10256,12 @@ class CombiReading(Reading,GraphicGenerator):
 
     def average_about_time(self,timepoint=16,plus_minus=0.5,
                            report=True,generatefresh=False):
-        timeindices=self["combifile"].pick_timeindices(timepoint=timepoint,
-                                                       plus_minus=plus_minus,
-                                                       report=report,
-                                                       generatefresh=generatefresh)
-        MV=self.measuredvalues()
+        P=self.get_parent()
+        timeindices=P.pick_timeindices(timepoint=timepoint,
+                                       plus_minus=plus_minus,
+                                       report=report,
+                                       generatefresh=generatefresh)
+        MV=self.rawmeasuredvaluesminusagar()
         readings=[MV[i] for i in timeindices]
         nreadings=len(readings)
         try:
@@ -10259,53 +10327,20 @@ class CombiReading(Reading,GraphicGenerator):
         if sum(self.intervals(upto=30))>2:
             return False
         if not hasattr(self,"measureinflection"):
-            Mwa=self.rawmeasuredvaluesminusagar()
-            T=self.timevalues()
-            SM=smooth_series(Mwa,k=smoothing)
-            ST=smooth_series(T,k=smoothing)
-            dM=delta_series(SM)
-            if not dM:
-                return False
-            temp=find_first_peak(dM[1:])
-            if not temp: return False
-            peakdMi=temp+1
-            #print peakdMi,dM[peakdMi]
-            #print
-            neighbouringtimepoints=ST[peakdMi-1:peakdMi+1]
-            middletimepoint=sum(neighbouringtimepoints)/2.0
-            CI=closest_index(T,middletimepoint)
-            self.measureinflection=Mwa[CI]
-            self.timeinflection=T[CI]
-            #NOW GO AHEAD AND WORK OUT SLOPE & LAG WHILE ALL DATA IS HERE
-            if 0<CI<len(T):
-                M1,M2=Mwa[CI-1],Mwa[CI+1]
-                T1,T2=T[CI-1],T[CI+1]
-                C1,C2=cellcount_estimate(M1),cellcount_estimate(M2)
-                #print "1: {} ({}) @ {}".format(M1,C1,T1)
-                #print "2: {} ({}) @ {}".format(M2,C2,T2)
-                self.maxslope=calc_slope(M1,M2,T1,T2)
-                Cslope=calc_slope(C1,C2,T1,T2)
-                minminusagar=self["minimum"].value-self["emptymeasure"].value
-                #slopeC=cellcount_estimate(self.slope)
-                #print "MI {}, TI {}".format(self.measureinflection,
-                #                            self.timeinflection)
-                #print "Slopes {} ({})".format(self.slope,Cslope)#,slopeC)
-                self.lag=calc_lag(self.maxslope,self.measureinflection,
-                                  minminusagar,self.timeinflection)
-                #print "lag {} hrs".format(self.lag)
-        return self.measureinflection,self.timeinflection
+            self.iD=calc_inflection(self.rawmeasuredvaluesminusagar(),
+                                    self.timevalues())
+            self.__dict__.update(self.iD)
+        return getattr(self,"inflectionM",False),getattr(self,"inflectionT",False)
 
     def get_lag(self):
-        if not hasattr(self,"lag"):
-            if not self.get_inflection():
-                return False
-        return self.lag
+        if not hasattr(self,"lagtime"):
+            self.get_inflection()
+        return getattr(self,"lagtime",False)
 
     def get_maxslope(self):
-        if not hasattr(self,"maxslope"):
-            if not self.get_inflection():
-                return False
-        return self.maxslope
+        if not hasattr(self,"maxMslope"):
+            self.get_inflection()
+        return getattr(self,"maxMslope",False)
 
 class CombiReadings(Readings):
     tablepath="/combireadings"
@@ -10364,6 +10399,30 @@ class ControlledReading(CombiReading):
     defaultlookup="ControlledReadingID"
     coltype=tbs.StringCol(120)
 
+    def get_parent(self):
+        return self["controlledexperiment"]
+
+    def rawmeasuredvaluesminusagar(self):
+        """
+        ControlledExperiment timevalues may differ from source combifile
+        timevalues as ControlledExperiment.create_from_combifiles
+        uses intersection function to create combined_timepoints.
+        Therefore this function must only return rawmeasuredvaluesminusagar
+        from the source CombiReading that match these timepoints
+        
+        """
+        combinedT=self["controlledexperiment"].timevalues()
+        sourcecombireading=self["combireading"]
+        source_measures=sourcecombireading.rawmeasuredvaluesminusagar()
+        source_times=sourcecombireading.timevalues()
+        if len(source_times)==len(combinedT):
+            return sourcemeasures
+        else:
+            S="{:.2f}"
+            Z=zip(source_times,source_measures)
+            lookup={S.format(k):v for k,v in Z}
+            return [lookup[S.format(T)] for T in combinedT]
+
     def is_empty(self):
         return False
 
@@ -10388,23 +10447,6 @@ class ControlledReading(CombiReading):
             else:
                 self.control_reading=results[0]
         return self.control_reading
-
-    def average_about_time(self,timepoint=16,plus_minus=0.5,
-                           report=True,generatefresh=False):
-        CF=self.get_treatment_reading()["combifile"]
-        timeindices=CF.pick_timeindices(timepoint=timepoint,
-                                        plus_minus=plus_minus,
-                                        report=report,
-                                        generatefresh=generatefresh)
-        MV=self.measuredvalues()
-        readings=[MV[i] for i in timeindices]
-        nreadings=len(readings)
-        try:
-            average=sum(readings)/float(nreadings)
-        except:
-            average=None
-        return average,nreadings
-
 
     def get_treatment_ratio(self,timefocus=16.0,
                             plus_minus=0.5,report=False):
@@ -11301,7 +11343,7 @@ class Autocurator(object):
 if __name__=='__main__':
     setup_logging("INFO")#CRITICAL")
     sys.excepthook=log_uncaught_exceptions
-
+    
     #Data from http://www.yeastgenome.org/search?q=paraquat&is_quick=true
 #    paraquatresistancedecreased=['CCS1','FRS2','IRA2','NAR1','POS5','PUT1','RNR4','SOD1','SOD2','UTH1']
 #    paraquatresistanceincreased=['PUT1','TPO1']
