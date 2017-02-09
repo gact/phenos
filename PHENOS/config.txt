@@ -9,11 +9,12 @@ type = png
 
 [GUI]
 position = 1100,800,50,50
+!low-res = 750,550,25,25
 
 [Controls]
 controls = YPD, YPD 30C, COM, COM 30C, Control
 
-[PhenotypeHandlers]
+[PhenotypeCalculators]
 !default = TreatmentRatioCalc, LagCalc, MaxSlopeCalc
 !available = MaximumChangeCalc, AverageWithoutAgarCalc, TreatmentRatioCalc, LagCalc, MaxSlopeCalc, MaxSlopeTimeCalc, DifferentialTimeCalc, PrintedMassCalc, PrintedMassControlledCalc, ShrinkageCalc, HalfPeakTimeCalc
 MMS.* = TreatmentRatioCalc, DifferentialTimeCalc
