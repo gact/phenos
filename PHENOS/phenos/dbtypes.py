@@ -7445,7 +7445,7 @@ class CombiFileID(DBString):
             CD=_combidict
         else:
             CD=combidict(*files)
-        if fileletter not in CD:
+        if "fileletter" not in CD:
             LOG.error("No fileletters found for files {}"
                       .format(str([str(f) for f in files])))
             return None
