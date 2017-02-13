@@ -2440,7 +2440,7 @@ class rQTLinputReader(GenotypeData):
             if not ob["timespan"].is_sufficient(fortext="output_to_rQTL"):
                 return False
             if not args:
-                args=ob["treatment"].get_phenotypehandlers()
+                args=ob["treatment"].get_phenotypecalculators()
         elif T=="CombiReadings":
             SFN=""
             if not args:
@@ -6338,7 +6338,7 @@ class FileLetter(DBString):
 class Treatment(DBString):
     coltype=tbs.StringCol(40)
     controls=Locations().get_config_dict()["controls"]
-    handlers=Locations().get_config_dict()["phenotypehandlers"]
+    calculators=Locations().get_config_dict()["phenotypecalculators"]
 
     def calculate(self):
         """
@@ -6356,35 +6356,35 @@ class Treatment(DBString):
     def is_control(self):
         return str(self.value).strip() in self.controls
 
-    def get_phenotypehandlers(self):
+    def get_phenotypecalculators(self):
         """
-        Consults the config.txt PhenotypeHandlers section
+        Consults the config.txt PhenotypeCalculators section
         If no match to any regex header in that, will default to
         those listed in '!default'
         """
-        def convert_handlernames_into_handlers(lst):
+        def convert_calculatornames_into_calculators(lst):
             output=[]
             for s in lst:
                 if s in globals():
                     output.append(globals()[s])
             return output
         
-        if not self.handlers:
-            LOG.error("Can't find phenotypehandlers in config.txt")
+        if not self.calculators:
+            LOG.error("Can't find phenotypecalculators in config.txt")
             return [MaximumChangeCalc]
-        specialkeys={k:convert_handlernames_into_handlers(v)
-                     for k,v in self.handlers.items()
+        specialkeys={k:convert_calculatornames_into_calculators(v)
+                     for k,v in self.calculators.items()
                      if k.startswith("!")}
-        otherkeys={k:convert_handlernames_into_handlers(v)
-                   for k,v in self.handlers.items()
+        otherkeys={k:convert_calculatornames_into_calculators(v)
+                   for k,v in self.calculators.items()
                    if k not in specialkeys}
         for k,v in otherkeys.items():
             if re.match(k,self.value):
-                LOG.info("Matched treatment {} to phenotypehandlers "
+                LOG.info("Matched treatment {} to phenotypecalculators "
                          "for {} = {}".format(self.value,k,
                                               str([c.__name__ for c in v])))
                 return v
-        LOG.info("Haven't found special phenotypehandlers for treatment {}"
+        LOG.info("Haven't found special phenotypecalculators for treatment {}"
                  " in config.txt, so using !default = {}"
                  .format(self.value,str([c.__name__
                                          for c
@@ -7445,6 +7445,10 @@ class CombiFileID(DBString):
             CD=_combidict
         else:
             CD=combidict(*files)
+        if fileletter not in CD:
+            LOG.error("No fileletters found for files {}"
+                      .format(str([str(f) for f in files])))
+            return None
         filelets=''.join(sorted(CD["fileletter"]))
 
         expids=CD["experimentid"]
