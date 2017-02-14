@@ -2049,8 +2049,9 @@ def main_rqtl():
     showdraw=False if len(PICK)>1 else True
     for P in PICK:
         if lookup[P]["Already exists?"]=="YES":
-            cf=lookup[P]['cf']
-            drawn=cf.draw_ratios(show=True)
+            ce=lookup[P]['ce']
+            pth=ce.get_plotssubfolderpath()
+            open_on_Windows(pth)
         else:
             cf=lookup[P]["cf"]
             cn=lookup[P]["controlcf"]
