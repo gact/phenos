@@ -461,8 +461,8 @@ def get_config_dict():
                                              "controls",
                                              "YPD, YPD 30C, "
                                              "COM, COM 30C")),
-            "phenotypehandlers":splitvalues(getall("PhenotypeHandlers",
-                                            {"!default":"AverageWithoutAgarAtTimeCalc"})),
+            "phenotypecalculators":splitvalues(getall("PhenotypeCalculators",
+                                                      {"!default":"AverageWithoutAgarAtTimeCalc"})),
             "combifilevisualizations":splitvalues(getall("CombiFileVisualizations",
                                             {"!default":"EmptyPlateView, "
                                              "PrintingQuality, "
@@ -691,6 +691,7 @@ def get_class_by_name(name):
     >>> c=get_class_by_name("DATReaderWithoutTemp")
     >>> print c.__name__
     DATReaderWithoutTemp
+    WARNING Doesn't work from inside other modules!
     """
     return globals().get(name,None)
 

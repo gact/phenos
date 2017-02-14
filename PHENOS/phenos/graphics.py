@@ -28,11 +28,18 @@ version = "2.7"
 
 # ###########################################################################
 def display_image(filepath,figsize=(14,9),aspect=1):
+    """
+    NB This won't work properly if used inside a gui mainloop
+    """
     im=pyplt.imread(filepath)
     fig,ax=pyplt.subplots(figsize=figsize)
-    implot=ax.imshow(im,aspect=aspect)
+    implot=ax.imshow(im)#,aspect=aspect)
     pyplt.axis('off')
-    pyplt.tight_layout()
+    try:
+        pyplt.tight_layout()
+    except Exception as e:
+        LOG.error("Couldn't set tight layout because {} {}"
+                  .format(e,get_traceback()))
     pyplt.show()
     try:
         mngr=ax.get_current_fig_manager()
@@ -2607,13 +2614,7 @@ class CurveAnalysis(ViewWrapper):
 if __name__=="__main__":
     setup_logging("INFO")
     sys.excepthook=log_uncaught_exceptions
-    
-    from dbtypes import *
 
-    for r in range(4301,4311):
-        cr=CombiReadings("Controls")[r]
-        cr.plot(show=True,savepath=False)
-        #print cr.iD
 
 #    import doctest
 #    doctest.testmod()
