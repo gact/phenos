@@ -9029,7 +9029,7 @@ class File(DBRecord,GraphicGenerator):
     def get_parser(self):
         if not hasattr(self,"parser"):
             if self["filereader"].is_valid():
-                readerclass=get_class_by_name(self["filereader"].get_fullpath())
+                readerclass=globals()[self["filereader"].value]
                 self.parser=readerclass(self["filepath"].get_fullpath(),
                                         passerrorsto=self)
             else:
