@@ -475,6 +475,15 @@ def get_config_dict():
                                              "Histogram_MaxChange, "
                                              "Scatterplot_PlatedMass_Lag, "
                                              "ReplicatePlots"}))}
+    if "phenotypecalculators" in output:
+        pc2={}
+        for k,v in output["phenotypecalculators"].items():
+            if k.startswith("!"):
+                pass
+            elif not k.endswith("$"):
+                k=k+"$"
+            pc2[k]=v
+        output["phenotypecalculators"]=pc2
     return output
 
 def check_and_fix_paths(create_userfolders=True):
