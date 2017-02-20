@@ -10420,7 +10420,7 @@ class ControlledReading(CombiReading):
         source_measures=sourcecombireading.rawmeasuredvaluesminusagar()
         source_times=sourcecombireading.timevalues()
         if len(source_times)==len(combinedT):
-            return sourcemeasures
+            return source_measures
         else:
             S="{:.2f}"
             Z=zip(source_times,source_measures)
