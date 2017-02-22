@@ -2135,6 +2135,7 @@ if __name__=="__main__":
     setup_logging("INFO")
     sys.excepthook=log_uncaught_exceptions
 
+    Strains().update()
     main()
 
 
