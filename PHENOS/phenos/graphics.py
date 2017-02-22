@@ -2459,7 +2459,7 @@ class ReplicatePlots(ViewWrapper):
                 LOG.warning("found correct number of replicateplots for {} "
                             "already"
                             .format(combifileob.value))
-                return True
+                return
         else:
             os.makedirs(RFP)
 
@@ -2554,11 +2554,12 @@ class ControlledRatios(ViewWrapper):
 
 class CurveAnalysis(ViewWrapper):
     def __init__(self,combireadingob,
+                 prefix=None,
                  suffix="measures without agar",
                  smoothing=15,
                  **kwargs):
         kwargs=update_with_named_kwargs(kwargs,locals())
-        kwargs.setdefault("prefix",self.__class__.__name__)
+        #kwargs.setdefault("prefix",self.__class__.__name__)
         savepath=get_checked_savepath(combireadingob,**kwargs)
         if savepath!=False or kwargs.get("overwrite",False):
             cr=combireadingob

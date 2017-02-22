@@ -9291,8 +9291,8 @@ class File(DBRecord,GraphicGenerator):
                                                       "ameroot}.{extension}"),
                       **kwargs):
         if self.is_empty():
-            return plateview_empty(self,pathformatter=pathformatter,
-                                   **kwargs)
+            return AgarThickness(self,pathformatter=pathformatter,
+                                 **kwargs)
 
     def get_RenamedFile(self,store=True):
         RF=RenamedFile(renamedfilename=self["filepath"].value,
@@ -9863,6 +9863,10 @@ class Strains(DBSharedTable,InMemory):
         self.store_many_record_objects(tostore+aliases,check=False)
         return self
 
+    def update(self):
+        self.clear()
+        self.populate()
+
     def get_genotype_dict(self):
         if not hasattr(self,"genotypelookup"):
             self.genotypelookup={}
@@ -10241,12 +10245,16 @@ class CombiReading(Reading,GraphicGenerator):
            EmptyMeasure,PlatedMass,Minimum,Measurements,
            Model,ErrorRecord]
     titleformat="{prefix} {strain} ({readingid}) {platelayout} ({treatment}){suffix}"
-    subfoldernameformat="{combifileid} '{platelayout}' ({note}) {treatment}"
-    graphicsnamerootformat="{strain} {combifileid} {platelayout} ({treatment})"
+    #subfoldernameformat="{combifileid} '{platelayout}' ({note}) {treatment}"
+    graphicsnamerootformat="{strain} {wellname} {combifileid} {platelayout} ({treatment})"
     coltype=tbs.StringCol(40)
 
     def get_parent(self):
         return self["combifile"]
+
+    def get_subfoldername(self,*args,**kwargs):
+        return os.path.join(self.get_parent().get_subfoldername(*args,**kwargs),
+                            "CurveAnalyses")
 
     def rawmeasuredvaluesminusagar(self):
         em=self["emptymeasure"].value or 0
@@ -10328,8 +10336,8 @@ class CombiReading(Reading,GraphicGenerator):
         and identify first peak among deltas, and trace that
         back to the nearest original timepoint and measurement
         """
-        if sum(self.intervals(upto=30))>2:
-            return False
+        #if sum(self.intervals(upto=30))>2:
+        #    return False
         if not hasattr(self,"measureinflection"):
             self.iD=calc_inflection(self.rawmeasuredvaluesminusagar(),
                                     self.timevalues())
@@ -11343,11 +11351,21 @@ class Autocurator(object):
 
 #
 
+def sample_curveanalyses(n=30):
+    CR=CombiReadings()
+    rds=list(CR.yield_records())
+    shuffle(rds)
+    testcrs=rds[:50]
+    for cr in testcrs:
+        print cr
+        cr.plot(show=True,savepath=False)
+
 #MAIN #########################################################################
 if __name__=='__main__':
     setup_logging("INFO")#CRITICAL")
     sys.excepthook=log_uncaught_exceptions
-    
+
+
     #Data from http://www.yeastgenome.org/search?q=paraquat&is_quick=true
 #    paraquatresistancedecreased=['CCS1','FRS2','IRA2','NAR1','POS5','PUT1','RNR4','SOD1','SOD2','UTH1']
 #    paraquatresistanceincreased=['PUT1','TPO1']

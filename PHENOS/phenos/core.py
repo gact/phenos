@@ -84,6 +84,9 @@ def calc_inflection(measurements,timevalues,smoothing=15):
     output={}
     M=output["M"]=measurements
     T=output["T"]=timevalues
+    minint,maxint=intervals(T)
+    if maxint-minint>1.0 or minint<0.1 or maxint>2.0:
+        return output
     sM=output["sM"]=smooth_series(M,k=smoothing)
     sT=output["sT"]=smooth_series(T,k=smoothing)
     DsM=output["DsM"]=delta_series(sM)
@@ -91,7 +94,8 @@ def calc_inflection(measurements,timevalues,smoothing=15):
     if not DsM: return output
     sDsM=output["sDsM"]=smooth_series(DsM,k=2)
     sDsT=output["sDsT"]=smooth_series(DsT,k=2)
-    sDsMpeakI=output["sDsMpeakI"]=find_first_peak(sDsM)
+    #sDsMpeakI=output["sDsMpeakI"]=find_first_peak(sDsM)
+    sDsMpeakI=output["sDsMpeakI"]=sDsM.index(max(sDsM))
     if not sDsMpeakI: return output
     sDsMpeakM=output["sDsMpeakM"]=sDsM[sDsMpeakI]
     sDsTpeakT=output["sDsTpeakT"]=sDsT[sDsMpeakI]
@@ -121,14 +125,20 @@ def calc_inflection(measurements,timevalues,smoothing=15):
 
 def doubling_time(slope):
     """
+    NOT YET IMPLEMENTED
     slope (change_in_rawmeasuredvalueminusagar / change_in_time)
     """
     cellcountslope=cellcount_estimate(slope)
-    
 
 def get_kmer_list(iterable,k=2):
     """reduces len of iterable by k-1"""
     return [iterable[x:x+k] for x in range(len(iterable)+1-k)]
+
+def intervals(values,upto=False):
+        if upto:
+            values=values[:upto]
+        intervals=[y-x for x,y in get_kmer_list(values,k=2)]
+        return min(intervals),max(intervals)
 
 def smooth_series(iterable,k=2):
     """reduces len of iterable by k-1"""
