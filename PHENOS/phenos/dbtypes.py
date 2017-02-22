@@ -7276,7 +7276,7 @@ class LagCalc(PhenotypeCalculator):
         try:
             output=[float(output)]
         except Exception as e:
-            output=[""]
+            output=[0]
         return output
 
 class MaxSlopeCalc(PhenotypeCalculator):
@@ -7294,7 +7294,7 @@ class MaxSlopeCalc(PhenotypeCalculator):
             output=record.get_maxslope()
             output=[float(output)]
         except Exception as e:
-            output=[""]
+            output=[0]
         return output
 
 class MaxSlopeTimeCalc(PhenotypeCalculator):
@@ -7312,7 +7312,7 @@ class MaxSlopeTimeCalc(PhenotypeCalculator):
             record.get_inflection()
             output=[record.inflectionT]
         except Exception as e:
-            output=[""]
+            output=[0]
         return output
 
 class DifferentialTimeCalc(PhenotypeCalculator):
@@ -7414,7 +7414,7 @@ class ShrinkageCalc(PhenotypeCalculator):
             MWA=float(record["minimumwithoutagar"])
             return [PM-MWA]
         except:
-            return [""]
+            return [0]
 
 class HalfPeakTimeCalc(PhenotypeCalculator):
     internalheaderformat="HalfPeakTime (hr)"
@@ -7429,7 +7429,7 @@ class HalfPeakTimeCalc(PhenotypeCalculator):
             record.get_inflection()
             return [record["halfpeaktime"]]
         except:
-            return [""]
+            return [0]
 #
 
 #COMBIFILES ###################################################################
