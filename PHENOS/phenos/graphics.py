@@ -923,7 +923,7 @@ class PlateView(object):
         pyplt.tight_layout()
         self.showsavecopy()
 
-    def transform_colorvalues(self,colorvalues=[],**kwargs):
+    def transform_colorvalues(self,colorvalues=[],usenewinker=False,**kwargs):
         changeattribute=False
         if not colorvalues:
             colorvalues=self.colorvalues
@@ -941,12 +941,15 @@ class PlateView(object):
             colorvalues=[colorvalues]*self.nunits
         else:
             self.needlegend=True
-            if not hasattr(self,"inker"):
-                self.inker=Inker(colorvalues,**passedkwargs)
-                colorvalues=self.inker.colors
+            if usenewinker:
+                newinker=Inker(colorvalues,**passedkwargs)
+                colorvalues=newinker.colors
             else:
-                colorvalues=self.inker(colorvalues,**passedkwargs)
-        
+                if not hasattr(self,"inker"):
+                    self.inker=Inker(colorvalues,**passedkwargs)
+                    colorvalues=self.inker.colors
+                else:
+                    colorvalues=self.inker(colorvalues,**passedkwargs)
         if changeattribute:
             self.colorvalues=colorvalues
         return colorvalues
@@ -1403,6 +1406,7 @@ class CurvePlot(PlateView):
                  invertcolorbar=False,
                  extramarkers=None,
                  extramarkercolorvalues=None,
+                 extramarkercolorvaluebounds=None,
                  extramarkerstyle="*",
                  extramarkersize=20,
                  **kwargs):
@@ -1438,6 +1442,12 @@ class CurvePlot(PlateView):
             self.savepath=kwargs["savepath"]
         if 'title' in kwargs:
             self.title=kwargs["title"]
+        if 'extramarkers' in kwargs:
+            self.extramarkers=kwargs["extramarkers"]
+        if 'extramarkercolorvalues' in kwargs:
+            self.extramarkercolorvalues=kwargs["extramarkercolorvalues"]
+        if 'extramarkercolorvaluebounds' in kwargs:
+            self.extramarkercolorvaluebounds=kwargs["extramarkercolorvaluebounds"]
 
         self.blank_canvas()
         self.main_sequence()
@@ -1525,13 +1535,37 @@ class CurvePlot(PlateView):
 
     def draw_extramarkers(self):
         if self.extramarkers:
-            if len(self.extramarkercolorvalues)==1:
-                self.extramarkercolorvalues=[self.extramarkercolorvalues]*len(self.extramarkers)
-            for c,(xs,ys) in zip(self.extramarkercolorvalues,self.extramarkers):
+            if self.extramarkercolorvaluebounds is None:
+                ys,xs=zip(*self.extramarkers)
+                self.extramarkercolorvaluebounds=(min(ys),max(ys))
+            
+            if self.extramarkercolorvalues is None:
+                EMCV=self.colorvalues
+            elif type(self.extramarkercolorvalues)==str:
+                EMCV=[self.extramarkercolorvalues]*len(self.extramarkers)
+            elif type(self.extramarkercolorvalues)==list:
+                if type(self.extramarkercolorvalues[0])==str:
+                    EMCV=self.extramarkercolorvalues
+                else:
+                    try:
+                        altered=float(self.extramarkercolorvalues[0])
+                        EMCV=self.transform_colorvalues(self.extramarkercolorvalues,
+                                                        usenewinker=True,
+                                                        colorvaluebounds=self.extramarkercolorvaluebounds,
+                                                        colorscheme=self.colorscheme,
+                                                        colorschemebounds=self.colorschemebounds)
+                    except:
+                        LOG.error("couldn't convert extramarkercolorvalues {}"
+                                  .format(str(self.extramarkercolorvalues)))
+                        EMCV=self.extramarkercolorvalues
+            else:
+                EMCV=['black']*len(self.extramarkers)
+            self.extramarkercolorvalues=EMCV
+            for c,(xs,ys) in zip(EMCV,self.extramarkers):
                 pyob=pyplt.Line2D(xdata=[xs],ydata=[ys],
                                   marker=self.extramarkerstyle,
                                   markersize=self.extramarkersize,
-                                  markeredgecolor='black',
+                                  markeredgecolor=c,
                                   markerfacecolor=c)
                 self.axes.add_artist(pyob)
 
@@ -2477,6 +2511,16 @@ class ReplicatePlots(ViewWrapper):
             #savepath=combifileob.get_graphicspath(**kwargs)
             savepath=get_checked_savepath(combifileob,**kwargs)
             title=combifileob.get_graphicstitle(**kwargs)
+            inflections=[]
+            lags=[]
+            for cr in recs:
+                inf=cr.get_inflection()
+                if not inf: inf=(-1,-1)
+                else: inf=(inf[1],inf[0])
+                inflections.append(inf)
+                lg=cr.get_lag()
+                if not lg: lg=None
+                lags.append(lg)
             if curveplotobject is None:
                 #print "FIRST PLOT"+"_"*50
                 ncpkwargs=dict(timevalues=combifileob.timevalues(),
@@ -2493,7 +2537,12 @@ class ReplicatePlots(ViewWrapper):
                                labels=[cr["wellname"].value
                                        for cr in recs],
                                title=title,
-                               savepath=savepath)
+                               savepath=savepath,
+                               extramarkers=inflections,
+                               extramarkerstyle='o',
+                               extramarkersize=4,
+                               extramarkercolorvalues=lags,
+                               extramarkercolorvaluebounds=(0.0,15.0))
                 ncpkwargs.update(kwargs)
                 curveplotobject=CurvePlot(**ncpkwargs)
                 self.nreplicateplots+=1
@@ -2507,6 +2556,9 @@ class ReplicatePlots(ViewWrapper):
                                labels=[cr["wellname"].value
                                        for cr in recs],
                                title=title,
+                               extramarkers=inflections,
+                               extramarkercolorvalues=lags,
+                               extramarkercolorvaluebounds=(0.0,15.0),
                                savepath=savepath)
                 ncpkwargs.update(unnamedkwargs)
                 curveplotobject(**ncpkwargs)
@@ -2615,7 +2667,6 @@ class CurveAnalysis(ViewWrapper):
 if __name__=="__main__":
     setup_logging("INFO")
     sys.excepthook=log_uncaught_exceptions
-
 
 #    import doctest
 #    doctest.testmod()
