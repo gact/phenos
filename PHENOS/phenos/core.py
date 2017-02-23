@@ -47,15 +47,19 @@ def cellcount_estimate(rawmeasuredminusagar):
     A=rawmeasuredminusagar
     return 77875.3*e**(1.75572*A)
 
-def calc_slope(m1,m2,t1,t2):
+def calc_slope(measures,timepoints):
     """
-    The slope of a line
+    The average slope of the measures and timepoints, averaged across every difference
+    in the set provided to avoid problems with noisy data
     """
     try:
-        return (m2-m1)/float(t2-t1)
+        mD=delta_series(measures,k=2)
+        tD=delta_series(timepoints,k=2)
+        allslopes=[m/float(t) for m,t in zip(mD,tD)]
+        return sum(allslopes)/len(allslopes)
     except Exception as e:
-        LOG.error("Can't calculate slope for {}-{}/{}-{} "
-                  "because {} {}".format(m2,m1,t2,t1,e,get_traceback()))
+        LOG.error("Can't calculate slope for {}/{}"
+                  "because {} {}".format(str(measures),str(timepoints),e,get_traceback()))
         return None
 
 def calc_lag(slope,measureinflection,minimum,timeinflection):
@@ -83,6 +87,7 @@ def calc_lag(slope,measureinflection,minimum,timeinflection):
 def calc_inflection(measurements,timevalues,smoothing=15):
     output={}
     M=output["M"]=measurements
+    C=output["C"]=[cellcount_estimate(m) for m in M]
     T=output["T"]=timevalues
     minint,maxint=intervals(T)
     if maxint-minint>1.0 or minint<0.1 or maxint>2.0:
@@ -102,13 +107,18 @@ def calc_inflection(measurements,timevalues,smoothing=15):
     iMTi=output["iMTi"]=closest_index(T,sDsTpeakT)
     inflectionT=output["inflectionT"]=T[iMTi]
     inflectionM=output["inflectionM"]=M[iMTi]
-    M1,M2=M[iMTi-1],M[iMTi+1]
-    T1,T2=T[iMTi-1],T[iMTi+1]
-    C1,C2=cellcount_estimate(M1),cellcount_estimate(M2)
+    #take segment of line surrounding inflection point and
+    slopewindow=4
+    leftindex=iMTi-slopewindow
+    rightindex=iMTi+slopewindow
+    Msub=M[leftindex:rightindex+1]
+    Csub=C[leftindex:rightindex+1]
+    Tsub=T[leftindex:rightindex+1]
+    
     #print "1: {} ({}) @ {}".format(M1,C1,T1)
     #print "2: {} ({}) @ {}".format(M2,C2,T2)
-    maxslope=output["maxMslope"]=calc_slope(M1,M2,T1,T2)
-    Cslope=output["maxCslope"]=calc_slope(C1,C2,T1,T2)
+    maxslope=output["maxMslope"]=calc_slope(Msub,Tsub)
+    Cslope=output["maxCslope"]=calc_slope(Csub,Tsub)
     minminusagar=min(M)
     maxchange=max(M)-minminusagar
     #slopeC=cellcount_estimate(self.slope)
