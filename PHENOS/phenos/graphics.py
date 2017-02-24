@@ -24,7 +24,7 @@ from core import LOG,setup_logging,log_uncaught_exceptions,flatten,filterdict,ge
 
 filename = os.path.basename(__file__)
 authors = ("David B. H. Barton")
-version = "2.7"
+version = "2.8"
 
 # ###########################################################################
 def display_image(filepath,figsize=(14,9),aspect=1):
@@ -268,7 +268,7 @@ class Inker(object):
                                 .format(self.colorscheme))
         else:
             try:
-                self.colorscheme=self._get_matplotcolormap(self.colorscheme)
+                self.colorscheme=self._get_matplotcolormap("rainbow")
             except:
                 LOG.warning("SPECIFIED COLORMAP {} NOT IN MATPLOTLIB; "
                             "SHOULDNT GET THIS ERROR."
@@ -294,7 +294,6 @@ class Inker(object):
         # 'colorstring': [['white', 'gray', 'limegreen', 'grey'], [3, 5, 6, 9]],
         # 'str': [['any old string'], [7]]}
         self.MTVD=self._split_valuetypes(self.colorvalues)
-
         if "NoneType" in self.MTVD:
             #Convert Nones to default colors
             LOG.debug("NoneType in Inker.MTVL")
@@ -567,7 +566,15 @@ class Inker(object):
         #what about sequential bounds for when colors are too close to
         #background or ends of scales are too similar?
         self.colorscheme=colorscheme
-        return [colorscheme(v) for v in valueslist]
+        output=[]
+        for v in valueslist:
+            if type(v)=='str':
+                output.append(v)
+            elif v in self.defaults:
+                output.append(self.defaults[v])
+            else:
+                output.append(colorscheme(v))
+        return output
 
     def _get_posneg_colors(self,rvalues,posneg=("Greens","Reds")):
         """
@@ -1548,15 +1555,15 @@ class CurvePlot(PlateView):
                     EMCV=self.extramarkercolorvalues
                 else:
                     try:
-                        altered=float(self.extramarkercolorvalues[0])
                         EMCV=self.transform_colorvalues(self.extramarkercolorvalues,
                                                         usenewinker=True,
                                                         colorvaluebounds=self.extramarkercolorvaluebounds,
                                                         colorscheme=self.colorscheme,
                                                         colorschemebounds=self.colorschemebounds)
-                    except:
-                        LOG.error("couldn't convert extramarkercolorvalues {}"
-                                  .format(str(self.extramarkercolorvalues)))
+                    except Exception as e:
+                        LOG.error("couldn't convert extramarkercolorvalues {} "
+                                  "for {} because {} {}"
+                                  .format(str(self.extramarkercolorvalues),self.title,e,get_traceback()))
                         EMCV=self.extramarkercolorvalues
             else:
                 EMCV=['black']*len(self.extramarkers)
