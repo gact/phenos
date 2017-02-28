@@ -1190,19 +1190,25 @@ def store_fileobject(MAINDICT):
         return MAINDICT
 
     if fo:
-        try:
-            LOG.info("drawing if empty")
-            PVOB=fo.draw_if_empty(show=False)
-            if PVOB:
-                del PVOB
+        if fo.is_empty():
             try:
-                pyplt.close("all")
-            except:
-                pass
-            LOG.info("drew if empty and deleted Plateview object")
-        except Exception as e:
-            LOG.error("Couldn't draw_if_empty because {} {}"
-                      .format(e,get_traceback()))
+                LOG.info("drawing if empty")
+                PVOB=fo.draw_if_empty(show=False)
+                emptyfolder="_Empty plate views"
+                EVP=os.path.join(LOCS["Plots"],
+                                 emptyfolder,
+                                 MAINDICT["userfolder"])
+                open_on_Windows(EVP)
+                if PVOB:
+                    del PVOB
+                try:
+                    pyplt.close("all")
+                except:
+                    pass
+                LOG.info("drew if empty and deleted Plateview object")
+            except Exception as e:
+                LOG.error("Couldn't draw_if_empty because {} {}"
+                          .format(e,get_traceback()))
     return MAINDICT
 
 def store_renamed_file(MAINDICT):
