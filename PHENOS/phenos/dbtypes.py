@@ -146,14 +146,16 @@ def split_records_by_rQTLgroup(ob):
 
 def screen_records(records,remove_ignore=True,**kwargs):
     screened=[]
+    skipnoalleles=kwargs.setdefault("skipnoalleles",True)
     for r in records:
         SIG=r.should_ignore()
         if remove_ignore and SIG:
             LOG.debug("ignoring record {} ({})".format(r.value,SIG))
             continue
-        if r.alleles() in [None,False,[]]:
-            LOG.debug("no alleles found for {}".format(r.value))
-            continue
+        if skipnoalleles:
+            if r.alleles() in [None,False,[]]:
+                LOG.debug("no alleles found for {}".format(r.value))
+                continue
         screened.append(r)
     return screened
 
@@ -2428,7 +2430,11 @@ class rQTLinputReader(GenotypeData):
         column in the resulting rQTL file
 
         If kwarg averagereplicates is True, then this effect is applied last
+
+        If kwarg skipnogenotypes is True, then any strains lacking
+        genotype information will be left out of the rQTL file.
         """
+        
         T=ob.__class__.__name__
         if T in ["ControlledExperiment","CombiFile"]:
             if not ob.timevalues():
@@ -2448,8 +2454,9 @@ class rQTLinputReader(GenotypeData):
 
         phenotypecalculators=[a(ob) for a in args]
         
-        kwargs.setdefault("remove_ignore",True)
-        kwargs.setdefault("combine_replicates",False)
+        skipnoalleles=kwargs.setdefault("skipnoalleles",False)
+        remove_ignore=kwargs.setdefault("remove_ignore",True)
+        combine_replicates=kwargs.setdefault("combine_replicates",False)
         
         headertag=','.join(flatten([pc.get_external_headers() for pc in phenotypecalculators]))
         #
@@ -2528,6 +2535,7 @@ class rQTLinputReader(GenotypeData):
             
             rowdata=[]
             if allalleles:
+                #if skipnogenotypes:
                 for rec,ma in zip(recs,maskedalleles):
                     goahead=True
                     PL=[]
@@ -5744,7 +5752,14 @@ class Plate(DBRecord,GraphicGenerator):
         return self.coords
 
     def draw(self,**kwargs):
-        return plateview_plate(self,**kwargs)
+        return PlateView(coords=self.get_coords(),
+                         labels=[cr["wellname"].value for cr in self.yield_records()],
+                         backgroundcolor='white',
+                         labelfontcolor='black',
+                         labelfontsize=8,
+                         title=self.value,
+                         savepath=None,
+                         show=True)
 
 class Plates(DBSharedTable,InMemory):
     _shared_state={}
@@ -8789,10 +8804,16 @@ class ControlledExperiment(CombiFile,GraphicGenerator):
 
     def split_records_by_rQTLgroup(self):
         if not hasattr(self,"records_by_rQTLgroup"):
-            self.records_by_rQTLgroup=defaultdict(list)
+            temp=defaultdict(list)
             for cr in self.yield_records():
                 rqg=cr["rqtlgroup"].value
-                self.records_by_rQTLgroup[rqg].append(cr)
+                temp[rqg].append(cr)
+            #ADD ANY BLANKS TO EVERY OTHER GROUP:
+            if "" in temp:
+                blanks=temp.pop("")
+                for k,v in temp.items():
+                    v+=blanks
+            self.records_by_rQTLgroup=temp
         return self.records_by_rQTLgroup
 
     def get_subfoldername(self,**kwargs):
@@ -8849,6 +8870,9 @@ class ControlledExperiment(CombiFile,GraphicGenerator):
 
         If kwarg averagereplicates is True, then this effect is applied last
         """
+        kwargs.setdefault("skipnoalleles",False)
+        kwargs.setdefault("remove_ignore",True)
+        kwargs.setdefault("combine_replicates",False)
         return rQTLinputReader.create_from_object(self,*args,**kwargs)
 
     def analyze(self,**kwargs):
@@ -11346,8 +11370,6 @@ class Autocurator(object):
     def check_blanks_and_growth(self):
         pass
 
-
-        
 
 #
 
