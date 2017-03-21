@@ -32,6 +32,6 @@ __________________________________________
 graphics.py
 
 
-This module contains wrapper classes for matplotlib to generate certain kinds of plots with predefined parameters, and translation functions which accept dbtype objects as inputs and extract the relevant values to pass to the wrapper classes. 
+This module contains wrapper classes for matplotlib to generate certain kinds of plots with predefined parameters, and translation classes which accept dbtype objects as inputs and extract the relevant values to pass to the wrapper classes. 
 
 __________________________________________
