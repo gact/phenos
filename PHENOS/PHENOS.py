@@ -647,7 +647,7 @@ def choose_treatment(MAINDICT):
                            title=TIT,
                            instruct=("Select treatment.{}"
                                      .format(os.linesep)),
-                           headers=["Treatment","Number of files in All with treatment"],
+                           headers=["Treatment","Number of files (including in All) with treatment"],
                            lists=LST2,
                            default=DEF)
     root.focus_force()
@@ -721,7 +721,7 @@ def choose_layout(MAINDICT):
                                      "(modify one of the Basic layouts "
                                      "and save it under a new name)."),
                            headers=["Layouts ({})".format(arraysize),
-                                    "Number of files in All with layout"],
+                                    "Number of files (including in All) with layout"],
                            lists=LST,
                            default=DEF)
     root.focus_force()
@@ -2088,7 +2088,7 @@ def main():
                   instruct=instruction,
                   options=["Rename & store platereader files",
                            "Combine/visualize renamed files",
-                           "Generate rQTL input for combined files"],
+                           "Generate R/qtl input for combined files"],
                   default="Create visualizations")
     root.focus_force()
     root.geometry(windowposition)
@@ -2116,11 +2116,11 @@ def main():
             if not OB8.value:
                 return
         main()
-    elif OPT=="Generate rQTL input for combined files":
+    elif OPT=="Generate R/qtl input for combined files":
         if main_rqtl() is False:
             root=tk.Tk()
             instruction=("There are no new combined files in {}"
-                         " for which rQTL input can be created"
+                         " for which R/qtl input can be created"
                          .format(Locations().get_userpath()))
             OB9=OptionBox(root,
                           title="PHENOS",
