@@ -90,18 +90,29 @@ def calc_inflection(measurements,timevalues,smoothing=15):
     C=output["C"]=[cellcount_estimate(m) for m in M]
     T=output["T"]=timevalues
     minint,maxint=intervals(T)
-    if maxint-minint>1.0 or minint<0.1 or maxint>2.0:
+    if maxint-minint>2.0 or minint<0.1 or maxint>3.0:
+        LOG.warning("minimum interval = {}, maximum interval = {}:"
+                    " uneven timepoints , therefore aborting "
+                    "calculations early".format(minint,
+                                                maxint))
         return output
     sM=output["sM"]=smooth_series(M,k=smoothing)
     sT=output["sT"]=smooth_series(T,k=smoothing)
     DsM=output["DsM"]=delta_series(sM)
     DsT=output["DsT"]=smooth_series(sT,k=2)
-    if not DsM: return output
+    if not DsM:
+        LOG.warning("smoothed measurements don't give valid delta "
+                    "values, therefore aborting "
+                    "calculations early")
+        return output
     sDsM=output["sDsM"]=smooth_series(DsM,k=2)
     sDsT=output["sDsT"]=smooth_series(DsT,k=2)
     #sDsMpeakI=output["sDsMpeakI"]=find_first_peak(sDsM)
     sDsMpeakI=output["sDsMpeakI"]=sDsM.index(max(sDsM))
-    if not sDsMpeakI: return output
+    if not sDsMpeakI:
+        LOG.warning("not getting valid sDsMpeakI therefore aborting "
+                    "calculations early")
+        return output
     sDsMpeakM=output["sDsMpeakM"]=sDsM[sDsMpeakI]
     sDsTpeakT=output["sDsTpeakT"]=sDsT[sDsMpeakI]
     iMTi=output["iMTi"]=closest_index(T,sDsTpeakT)
@@ -274,19 +285,20 @@ def indices_to_values(lst,indices):
 
 def get_allnone_mask(list_of_lists):
     """
-    returns the indices of every position that isn't None in every
+    returns the indices of every position that is None in every
     sublist. Used to filter out all-None columns from markers and
     alleles
     """
-    retainedindices=set(range(len(list_of_lists[0])))
-    noneindexer=lambda L:[i for i,v in enumerate(L) if v is None]
-    for lst in list_of_lists:
-        noneindices=noneindexer(lst)
-        if noneindices==[]:
-            return []
-        noneindexset=set(noneindices)
-        retainedindices&=noneindexset
-    return sorted(retainedindices)
+    output=[]
+    index=0
+    while True:
+        try:
+            if not any([lst[index] for lst in list_of_lists]):
+                output.append(index)
+            index+=1
+        except IndexError:
+            break
+    return output
 
 def mask_by_index(lst,indices_to_skip):
     return [v for i,v in enumerate(lst) if i not in indices_to_skip]

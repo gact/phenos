@@ -2454,7 +2454,7 @@ class rQTLinputReader(GenotypeData):
 
         phenotypecalculators=[a(ob) for a in args]
         
-        skipnoalleles=kwargs.setdefault("skipnoalleles",False)
+        skipnoalleles=kwargs.setdefault("skipnoalleles",True)
         remove_ignore=kwargs.setdefault("remove_ignore",True)
         combine_replicates=kwargs.setdefault("combine_replicates",False)
         
@@ -2497,35 +2497,63 @@ class rQTLinputReader(GenotypeData):
             rowdata=[]
             shareddata={}
             allalleles=[]
+            allvalidalleles=[]
+            markers=False
             for r in recs:
                 AL=r.alleles()
+                if AL and not markers:
+                    markers=r.markers()
                 if AL is False:
                     AL=[]
-                else:
-                    allalleles.append(AL)
-            maskedMN,maskedCH,maskedGP=[],[],[]
-            if allalleles:
-                mask=get_allnone_mask(allalleles)
-                maskedalleles=[mask_by_index(AL,mask) for AL in allalleles]
-                maskedMN=mask_by_index(recs[0].markers()["markernames"],
-                                       mask)
-                maskedCH=mask_by_index(recs[0].markers()["chromosomes"],
-                                       mask)
-                maskedGP=mask_by_index(recs[0].markers()["geneticpositions"],
-                                       mask)
+                LOG.debug("Added {} alleles for {}"
+                          .format(len(AL),r["strain"].value))
+                allalleles.append(AL)
+                if AL:
+                    allvalidalleles.append(AL)
+            #This section cuts out any markers that are blank for all the strains
+            if allvalidalleles:
+                mask=get_allnone_mask(allvalidalleles)
+                #mask is list of every index that has None in every sublist
+            if mask and markers:
+                LOG.info("Masking markers with allnone_mask ({} indices removed)"
+                         .format(len(mask)))
+                maskedMN=mask_by_index(markers["markernames"],mask)
+                maskedCH=mask_by_index(markers["chromosomes"],mask)
+                maskedGP=mask_by_index(markers["geneticpositions"],mask)
+            elif markers:
+                LOG.debug("No marker masking required")
+                maskedMN=markers["markernames"]
+                maskedCH=markers["chromosomes"]
+                maskedGP=markers["geneticpositions"]
+            else:
+                if not markers:
+                    LOG.debug("No markers found for {}".format(ob.value))
+                maskedMN,maskedCH,maskedGP=[],[],[]
 
-                """
-                shareddata must be dict containing these headers:
-                    "markernames",
-                    "phenotypeheaders"
-                and optionally (otherwise deduced from markernames):
-                    "chromosomes",
-                    "geneticpositions"
-                rowdata must be a list of dictionaries, each with the headers:
-                    "phenotyperow"
-                    "strain",
-                    "genotyperow"
-                """
+            #now collect alleles (masked if necessary) for each strain
+            alleledict={}
+            for r,AL in zip(recs,allalleles):
+                if AL:
+                    key=r["strain"].value
+                    if key not in alleledict:
+                        if mask:
+                            m=mask_by_index(AL,mask)
+                        else:
+                            m=AL
+                        alleledict[key]=m
+
+            """
+            shareddata must be dict containing these headers:
+                "markernames",
+                "phenotypeheaders"
+            and optionally (otherwise deduced from markernames):
+                "chromosomes",
+                "geneticpositions"
+            rowdata must be a list of dictionaries, each with the headers:
+                "phenotyperow"
+                "strain",
+                "genotyperow"
+            """
             headers=flatten([pc.get_header_list() for pc
                              in phenotypecalculators])
             shareddata={"markernames":maskedMN,
@@ -2534,40 +2562,26 @@ class rQTLinputReader(GenotypeData):
                         "phenotypeheaders":headers}
             
             rowdata=[]
-            if allalleles:
-                #if skipnogenotypes:
-                for rec,ma in zip(recs,maskedalleles):
-                    goahead=True
-                    PL=[]
-                    for pc in phenotypecalculators:
-                        try:
-                            PL.append(pc.get_phenotype_list(rec))
-                        except Exception as e:
-                            LOG.error("problem with get_phenotype_list for phenotypecalculator {} "
-                                      "for record {} so abandoning creation of {}, because {} {}"
-                                      .format(pc.__class__.__name__,rec.value,filepath,e,get_traceback()))
-                            goahead=False
-                    PR=flatten(PL)
-                    
-                    rowdata.append({"phenotyperow":PR,
-                                    "strain":rec["strain"].value,
-                                    "genotyperow":ma})
-            else:
-                for rec in recs:
-                    goahead=True
-                    PL=[]
-                    for pc in phenotypecalculators:
-                        try:
-                            PL.append(pc.get_phenotype_list(rec))
-                        except Exception as e:
-                            LOG.error("problem with get_phenotype_list for phenotypecalculator {} "
-                                      "for record {} so abandoning creation of {}, because {} {}"
-                                      .format(pc.__class__.__name__,rec.value,filepath,e,get_traceback()))
-                            goahead=False
-                    PR=flatten(PL)
-                    
-                    rowdata.append({"phenotyperow":PR,
-                                    "strain":rec["strain"].value})
+            goahead=True
+            for r in recs:
+                name=r["strain"].value
+                if remove_ignore and r["ignore"].value:
+                    continue
+                if skipnoalleles and name not in alleledict:
+                    continue
+                PL=[]
+                for pc in phenotypecalculators:
+                    try:
+                        PL.append(pc.get_phenotype_list(r))
+                    except Exception as e:
+                        LOG.error("problem with get_phenotype_list for phenotypecalculator {} "
+                                  "for record {} so abandoning creation of {}, because {} {}"
+                                  .format(pc.__class__.__name__,r.value,filepath,e,get_traceback()))
+                        goahead=False
+                PR=flatten(PL)
+                rowdata.append({"phenotyperow":PR,
+                                "strain":r["strain"].value,
+                                "genotyperow":alleledict.get(name,[])})
 
             if goahead:
                 rowdata2=sorted(rowdata,key=lambda k:k["strain"])
