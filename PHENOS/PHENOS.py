@@ -1305,6 +1305,12 @@ def main_rename():
         if not handle_file(MAINDICT): return
 
     elif autorename is True:
+        #copy file to target_directory without renaming
+        filename=MAINDICT["renamedfilename"]
+        sourcefilepath=os.path.join(platereader_output,filename)
+        targetfilepath=os.path.join(LOCS.get_userpath(),filename)
+        copy_to(sourcefilepath,targetfilepath)
+
         if not choose_user_folder(MAINDICT):
             #OPTION: CONTINUE WITHOUT DATA? (Just generates txt and basic curves)
             output_to_txt(MAINDICT)
@@ -2069,6 +2075,11 @@ def main_rqtl():
                                                             store=True,
                                                             report=True)
             drawn=Cex.draw_ratios(show=showdraw)
+            try:
+                Cex.output_phenotypes()
+            except Exception as e:
+                LOG.error("Unable to output_phenotypes{} because {} {}"
+                          .format(Cex.value,e,get_traceback()))
             try:
                 Cex.output_to_rQTL()
             except Exception as e:
