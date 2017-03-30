@@ -7,7 +7,7 @@ import logging,platform,ConfigParser,traceback
 import numpy as np
 from itertools import chain
 from math import e
-from collections import defaultdict
+from collections import defaultdict, Counter
 #OTHER
 from matplotlib import use as mpluse
 mpluse('PS')
@@ -84,17 +84,45 @@ def calc_lag(slope,measureinflection,minimum,timeinflection):
     if np.isinf(timeofslopecrossingminimum): return None
     return timeofslopecrossingminimum
 
+def intervals_check(timepoints,bounds=(0.1,1)):
+    intervals=["{:.2f}".format(y-x) for x,y in get_kmer_list(timepoints,k=2)]
+    N=float(len(intervals))
+    IC=Counter(intervals)
+    #As long as 95% of intervals of equal, then proceed
+    percents={k:v/N for k,v in IC.items()}
+    if max(percents.values())<0.95:
+        LOG.error("> 5% of time value intervals are not the "
+                  "most common value ({})".format(str(percents)))
+        return False
+    #As long as any abnormal time intervals are within the first
+    #or last 5% of the sequence, then proceed
+    ranked=IC.most_common()
+    #if most common time interval is outside usual bounds then abort
+    ti,cnt=ranked[0]
+    Fti=float(ti)
+    if Fti>bounds[1] or Fti<bounds[0]:
+        LOG.error("most common time interval ({}) is outside "
+                  "bounds ({})".format(ti,str(bounds)))
+        return False
+    #if less common time intervals are not with 5% of either end
+    if len(ranked)>1:
+        subintervals=intervals[int(N*0.05):int(N*0.95)]
+        for t,c in ranked[1:]:
+            if t in subintervals:
+                LOG.error("uncommon time interval ({}) found "
+                          "within central 90% of time values"
+                          .format(t))
+                return False
+    return True
+
 def calc_inflection(measurements,timevalues,smoothing=15):
     output={}
     M=output["M"]=measurements
     C=output["C"]=[cellcount_estimate(m) for m in M]
     T=output["T"]=timevalues
-    minint,maxint=intervals(T)
-    if maxint-minint>2.0 or minint<0.1 or maxint>3.0:
-        LOG.warning("minimum interval = {}, maximum interval = {}:"
-                    " uneven timepoints , therefore aborting "
-                    "calculations early".format(minint,
-                                                maxint))
+    if not intervals_check(T):
+        LOG.warning("time values intervals check failed,"
+                    "therefore aborting calculations early")
         return output
     sM=output["sM"]=smooth_series(M,k=smoothing)
     sT=output["sT"]=smooth_series(T,k=smoothing)

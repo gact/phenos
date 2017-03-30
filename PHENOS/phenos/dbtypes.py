@@ -2567,8 +2567,9 @@ class rQTLinputReader(GenotypeData):
                 name=r["strain"].value
                 if remove_ignore and r["ignore"].value:
                     continue
-                if skipnoalleles and name not in alleledict:
-                    continue
+                if skipnoalleles:
+                    if name not in alleledict:
+                        continue
                 PL=[]
                 for pc in phenotypecalculators:
                     try:
@@ -8877,6 +8878,43 @@ class ControlledExperiment(CombiFile,GraphicGenerator):
                       savepath=savepath,
                       show=False)
 
+    def output_phenotypes(self,*args,**kwargs):
+        """
+        all phenotype calculations 
+        args are one or more PhenotypeCalculators, each one generating a
+        column in the resulting rQTL file
+
+        If kwarg averagereplicates is True, then this effect is applied last
+        """
+        PCs=self["treatment"].get_phenotypecalculators()
+        PCinstances=[pc(self) for pc in PCs]
+        headers1=["strain","well","ignore"]
+        headers2=flatten([pc.get_header_list() for pc in PCinstances])
+        headertag=','.join(flatten([pc.get_external_headers()
+                                    for pc in PCinstances]))
+        filepath=self.get_graphicspath(prefix="Phenotypes",
+                                       suffix=headertag,
+                                       extension="csv",
+                                       **kwargs)
+
+        with open(filepath,"wb") as fileob:
+            writer=csv.writer(fileob,delimiter=',',
+                              quoting=csv.QUOTE_MINIMAL)
+            #add rows
+            row1=headers1+headers2
+            writer.writerow(row1)
+            for rec in self.yield_records():
+                row1=[rec["strain"].value,
+                      rec["wellname"].value,
+                      str(rec.should_ignore())]
+                row2=flatten([pc.get_phenotype_list(rec)
+                              for pc in PCinstances])
+                writer.writerow(row1+row2)
+            fileob.close()
+            LOG.info("output_phenotypes created {}"
+                     .format(filepath))
+            return True
+
     def output_to_rQTL(self,*args,**kwargs):
         """
         args are one or more PhenotypeCalculators, each one generating a
@@ -8884,7 +8922,7 @@ class ControlledExperiment(CombiFile,GraphicGenerator):
 
         If kwarg averagereplicates is True, then this effect is applied last
         """
-        kwargs.setdefault("skipnoalleles",False)
+        kwargs.setdefault("skipnoalleles",True)
         kwargs.setdefault("remove_ignore",True)
         kwargs.setdefault("combine_replicates",False)
         return rQTLinputReader.create_from_object(self,*args,**kwargs)
@@ -11401,6 +11439,8 @@ if __name__=='__main__':
     setup_logging("INFO")#CRITICAL")
     sys.excepthook=log_uncaught_exceptions
 
+    ce=ControlledExperiments()[-1]
+    print ce.timevalues()
     #Data from http://www.yeastgenome.org/search?q=paraquat&is_quick=true
 #    paraquatresistancedecreased=['CCS1','FRS2','IRA2','NAR1','POS5','PUT1','RNR4','SOD1','SOD2','UTH1']
 #    paraquatresistanceincreased=['PUT1','TPO1']
