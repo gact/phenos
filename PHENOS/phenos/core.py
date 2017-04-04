@@ -217,6 +217,24 @@ def find_first_peak(iterable):
         if v<=lv: return i-1
         lv=v
 
+def yield_contiguous_index_ranges(lst):
+    """
+    Returns sets of slices of numbers that are contiguous in a list
+    e.g. [1,2,3,4,6,7,8] would return
+    ((1,5),(6,9))
+    """
+    lastSTART=lst[0]
+    lastEND=lst[0]
+    for i in lst[1:]:
+        if i==lastEND+1:
+            lastEND=i
+        else:
+            yield (lastSTART,lastEND+1)
+            lastSTART=i
+            lastEND=i
+        lastEND=i
+    yield (lastSTART,lastEND+1)
+
 def get_chrcumulative():
     """
     Returns dictionary of bp additions to be added to bp coordinates

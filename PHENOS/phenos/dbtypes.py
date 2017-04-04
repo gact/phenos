@@ -376,6 +376,9 @@ class Locations(object):
             Locations.userdbases[userfolder]=DBase(pth)
         return Locations.userdbases[userfolder]
 
+    def get_shareddbase(self):
+        return self.get_dbase(userfolder=shareddbasenameroot)
+
     def get_dbasedir(self,userfolder):
         if userfolder==shareddbasenameroot:
             DIR=Locations.rootdirectory
@@ -503,6 +506,18 @@ class Locations(object):
     def yield_userpaths(self):
         for f in Locations.userfolders:
             yield self.get_userpath(f)
+
+    def yield_all_dbases(self):
+        reset_to=self.currentuserfolder
+        yield self.get_shareddbase()
+        for uf in self.get_userfolders():
+            yield self.get_dbase(uf)
+        self.change(reset_to)
+
+    def yield_all_dbtables(self):
+        for dbase in self.yield_all_dbases():
+            for tabl in dbase.yield_dbtables():
+                yield tabl
 #
 
 class GraphicGenerator(object):
@@ -3050,6 +3065,13 @@ class DBase(object):
     def delete(self):
         os.remove(self.filepath)
 
+    def yield_dbtables(self):
+        userfolder=os.path.basename(self.filepath)[1:-3]
+        for i in self:
+            tableclassname=i.title
+            tableclass=globals()[tableclassname]
+            yield tableclass(userfolder)
+
 class DBAtom(object):
     """
     The superclass of all basic record units.
@@ -4213,6 +4235,17 @@ class DBRecord(DBAtom):
         return zip(*self.atoms)[0]
     headers=keys
 
+    def is_dud(self):
+        """
+        Checks only fields which are 'str' type. If none of these
+        are valid, the entire record is considered a dud.
+        """
+        contentcheck=[]
+        for nm,atm in self.atoms:
+            if type(atm.value) in [str,np.string_]:
+                contentcheck.append(atm.is_valid())
+        return not any(contentcheck)
+
     def keys_extended(self):
         basickeys=list(self.keys())
         methodkeys=[k for k in self.__dict__.keys() if k[0]!="_"]
@@ -4836,6 +4869,10 @@ class DBTable(object):
         >>> r2.delete()
         True
         """
+        if record_object.is_dud():
+            LOG.warning("Record object {} is a 'dud' and will not "
+                        "be stored".format(str(record_object)))
+            return False
         self.claim_table()
         if check:
             if self.query_by_record_object(record_object):
@@ -4891,6 +4928,15 @@ class DBTable(object):
                     checked_and_passed.append(rec)
         else:
             checked_and_passed=iterable
+        #CHECKING FOR DUDS:
+        checked_and_passed2=[]
+        for rec in checked_and_passed:
+            if rec.is_dud():
+                LOG.warning("Record object {} is a 'dud' and will not "
+                            "be stored".format(str(rec)))
+            else:
+                checked_and_passed2.append(rec)
+        checked_and_passed=checked_and_passed2
         #STORING
         for rec in checked_and_passed:
             tabrow=self.table.row
@@ -5379,6 +5425,51 @@ class DBTable(object):
                 return
         self.claim_table()
         self.table._f_remove()
+
+    def repair(self):
+        """
+        Sometimes empty entries appear and are difficult to remove
+        using the standard delete wrapper function. This takes care
+        of them all, though is SLOW.
+        """
+        self.claim_table()
+        limit=100
+        delrows=[]
+        allrows=[]
+        for rw in self.table.iterrows():
+            resultslist=rw[:]
+            rec=self.recordclass(*resultslist,
+                                 dbasenameroot=self.dbasenameroot)
+            allrows.append(rw.nrow)
+            if rec.is_dud():
+                delrows.append(rw.nrow)
+        if delrows:
+            LOG.info("Repairing table {}({}) by removing {} dud records"
+                     .format(self.__class__.__name__,
+                             self.dbasenameroot,
+                             len(delrows)))
+            GCIR=list(yield_contiguous_index_ranges(delrows))
+            for sliceA,sliceB in GCIR[::-1]:
+                if sliceA==min(allrows):
+                    if sliceB==max(allrows)+1:
+                        LOG.warning("Not possible to delete all rows "
+                                    "from {}. Check contents and use "
+                                    "table.clear() instead"
+                                    .format(self.name()))
+                        continue
+                self.table.remove_rows(sliceA,sliceB)
+                self.table.flush()
+            LOG.info("Repaired table {}({}): now has {} rows"
+                     .format(self.__class__.__name__,
+                             self.dbasenameroot,
+                             len(self.table)))
+        else:
+            LOG.info("No duds found in Table {}({}) ({} records) "
+                     "so no repairs needed"
+                     .format(self.__class__.__name__,
+                             self.dbasenameroot,
+                             len(self.table)))
+
 #display functions
     def __len__(self):
         """
@@ -5492,6 +5583,10 @@ class DBTable(object):
         """
         printed=self.display(printit=False)
         return printed
+
+    def name(self):
+        return "{}({})".format(self.__class__.__name__,
+                               self.dbasenameroot)
 
     def output_to_txt(self,filename=None,overwrite="ask"):
         """
@@ -11092,6 +11187,37 @@ def printall():
         print t
         print
 
+def repairall():
+    """
+    finds all databases and performs repair() on all tables in each database
+    """
+    LOCS=Locations()
+    #
+    for tabl in LOCS.yield_all_dbtables():
+        try:
+            LOG.info("Running repair on {}"
+                     .formay(tabl.name()))
+            tabl.repair()
+        except Exception as e:
+            LOG.error("Couldn't repair {} because {} {}"
+                      .format(tabl.name(),e,get_traceback()))
+
+def diagnosticsall():
+    """
+    finds all databases and performs repair() on all tables in each database
+    """
+    LOCS=Locations()
+    #
+    for tabl in LOCS.yield_all_dbtables():
+        try:
+            LOG.info("Running diagnostics on {}"
+                     .formay(tabl.name()))
+            tabl.diagnostics()
+        except Exception as e:
+            LOG.debug("Couldn't repair {} because {} {}"
+                      .format(tabl.name(),e,get_traceback()))
+
+
 def average_replicate_timepoints(rowdata):
     """
     function FN to be fed to CombiFiles().output_to_rQTL with replicate_fn kwarg,
@@ -11439,8 +11565,10 @@ if __name__=='__main__':
     setup_logging("INFO")#CRITICAL")
     sys.excepthook=log_uncaught_exceptions
 
-    ce=ControlledExperiments()[-1]
-    print ce.timevalues()
+
+    repairall()
+    
+    #Files("Controls").diagnostics()
     #Data from http://www.yeastgenome.org/search?q=paraquat&is_quick=true
 #    paraquatresistancedecreased=['CCS1','FRS2','IRA2','NAR1','POS5','PUT1','RNR4','SOD1','SOD2','UTH1']
 #    paraquatresistanceincreased=['PUT1','TPO1']
