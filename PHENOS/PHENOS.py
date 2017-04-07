@@ -278,12 +278,13 @@ def choose_user_folder(MAINDICT,
         if fp not in IGNORE:
             LST.append((fp,fpc))
             LSTED.append(fp)
-    if not LST:
-        LST=[("New folder","")]
     LST.sort()
+    NF=("New folder","")
+    if NF not in LST:
+        LST+=[NF]
     DEF=LOCS.currentuserfolder
     if DEF in IGNORE or DEF not in LSTED:
-        DEF="New folder"
+        DEF=NF[0]
 
     root=tk.Tk()
     LB2=MultiColumnListbox(root,
@@ -1140,13 +1141,16 @@ def handle_file(MAINDICT):
                 timeout-=1
                 if not timeout: break
                 time.sleep(1)
+            SF=store_fileobject(MAINDICT)
+            if SF:
+                MAINDICT=SF
+                MAINDICT=store_renamed_file(MAINDICT)
         except Exception as e:
             LOG.error("Couldn't copy {} to {} because {} {}"
                       .format(filepath,targetfilepath,e,get_traceback()))
             return MAINDICT
         #wait for copy to complete
-        MAINDICT=store_fileobject(MAINDICT)
-        MAINDICT=store_renamed_file(MAINDICT)
+
         return MAINDICT
 
 def store_fileobject(MAINDICT):
@@ -1166,8 +1170,9 @@ def store_fileobject(MAINDICT):
             LOG.error("Couldn't create fileobject from MAINDICT {} "
                       "because {} {}"
                       .format(MAINDICT,e,get_traceback()))
-
-    fo=MAINDICT["fileobject"]
+    fo=MAINDICT.get("fileobject",None)
+    if not fo:
+        return None
     fo.calculate_all()
     if not fo["platelayout"].file_exists():
         LOG.error("Layout file {} not found"
@@ -1176,8 +1181,8 @@ def store_fileobject(MAINDICT):
     try:
         fo.store()
         readingcount=fo.read()
-                
-        LOG.info("Created File({}) and added to {}"
+        
+        LOG.info("Created File({}) and added to {} "
                  "along with {} Readings"
                  .format(fo.value,
                          LOCS.get_userpath(),
@@ -1263,7 +1268,7 @@ def main_rename():
         if summarise_file(MAINDICT) is False: repeat=True
 
     if autorename is False:
-        #SELECT USER FOLDER (Default to Locations().get_userpath())
+        #SELECT USER FOLDER (Default to LOCS.get_userpath())
         if not choose_user_folder(MAINDICT):
             #OPTION: CONTINUE WITHOUT DATA? (Just generates txt and basic curves)
             output_to_txt(MAINDICT)
@@ -1502,7 +1507,7 @@ def main_combine():
           for cf in LST]
     if not LST2:
         LOG.error("No new combifiles to create in {}"
-                  .format(Locations().get_userpath()))
+                  .format(LOCS.get_userpath()))
 
     headers=["Files","Treatment","Layout","Is control?",
              "Timestamp of first","Already created?"]
@@ -2115,7 +2120,7 @@ def main():
         if main_combine() is False:
             root=tk.Tk()
             instruction=("There are no new files in {} which can be combined"
-                         .format(Locations().get_userpath()))
+                         .format(LOCS.get_userpath()))
             OB8=OptionBox(root,
                           title="PHENOS",
                           instruct=instruction,
@@ -2132,7 +2137,7 @@ def main():
             root=tk.Tk()
             instruction=("There are no new combined files in {}"
                          " for which R/qtl input can be created"
-                         .format(Locations().get_userpath()))
+                         .format(LOCS.get_userpath()))
             OB9=OptionBox(root,
                           title="PHENOS",
                           instruct=instruction,
@@ -2153,6 +2158,7 @@ if __name__=="__main__":
     sys.excepthook=log_uncaught_exceptions
 
     Strains().update()
+    LOCS.backup_all()
     main()
 
 
