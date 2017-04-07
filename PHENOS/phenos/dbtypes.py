@@ -51,7 +51,7 @@ except:
 
 filename=os.path.basename(__file__)
 authors=("David B. H. Barton")
-version="2.7"
+version="2.9"
 
 usecontrolsdatabase=True
 shareddbasenameroot="_phenos_shared_database"
@@ -131,10 +131,14 @@ def originalfilename_from_shareddata(shareddata):
     """
     e.g. os.path.join(platereader_output,"Ab384-emptyplate_160422_1722.csv")
     """
-    DT=time.strftime("%y%m%d_%H%M",time.localtime(shareddata["finishedtime"]))
-    return "{}_{}{}".format(shareddata["platereaderprogram"],
-                            DT,
-                            shareddata["extension"])
+    DT=time.strftime("%y%m%d_%H%M",
+                     time.localtime(shareddata["finishedtime"]))
+    OFN="{}_{}{}".format(shareddata["platereaderprogram"],
+                         DT,
+                         shareddata["extension"])
+    LOG.info("Creating originalfilename {} from shareddata {}"
+             .format(OFN,shareddata))
+    return OFN
 
 def split_records_by_rQTLgroup(ob):
     if not hasattr(ob,"records_by_rQTLgroup"):
@@ -267,13 +271,6 @@ def convert_to_cell_count(reading):
     e=math.e
     return 54927*(e**(1.83924751759787*R))
 
-def diagnostics():
-    warnings=[]
-    for dp in Locations().datpaths:
-        dbasenameroot=os.path.basename(dp)
-        warnings+=Files().diagnostics()
-    print warnings
-
 #LOCATIONS ####################################################################
 
 class Locations(object):
@@ -346,7 +343,8 @@ class Locations(object):
         for userfolder in os.listdir(self["datafiles"]):
             userfolderpath=self.userfolder_to_userpath(userfolder)
             if os.path.isdir(userfolderpath):
-                userfolders.append(userfolder)
+                if userfolder!="New folder":
+                    userfolders.append(userfolder)
         Locations.userfolders=userfolders
         return Locations.userfolders
 
@@ -518,6 +516,19 @@ class Locations(object):
         for dbase in self.yield_all_dbases():
             for tabl in dbase.yield_dbtables():
                 yield tabl
+
+    def display_all(self):
+        for db in self.yield_all_dbases():
+            print db
+
+    def backup_all(self,depth=3):
+        for db in self.yield_all_dbases():
+            db.backup(depth=depth)
+
+    def rollback_all(self):
+        for db in self.yield_all_dbases():
+            db.rollback()
+
 #
 
 class GraphicGenerator(object):
@@ -2955,17 +2966,78 @@ class DBase(object):
             dr=DBRecord(3, 4, 5.0)
             dr.store(check=False)
 
-    def backup(self):
+    def backup(self,depth=3):
         DIR,FN=os.path.split(self.filepath)
         BN,EXT=os.path.splitext(FN)
-        backupfilepath=os.path.join(DIR,BN+".backup")
+        backupfilepath=os.path.join(DIR,BN+".backup1")
+        self._backup_backup(backupfilepath,depth=depth)
         try:
-            shutil.copy(self.filepath,backupfilepath)
-            LOG.info("backed up dbase to {}"
-                     .format(backupfilepath))
+            copy_to(self.filepath,backupfilepath)
+            LOG.info("backed up dbase {} to {}"
+                     .format(FN,backupfilepath))
         except Exception as e:
             LOG.warning("couldn't backup dbase to {} because {}"
                         .format(backupfilepath,e))
+
+    def _backup_backup(self,backuppath,depth=3):
+        if not os.path.exists(backuppath):
+            return False
+        thisdepth=int(backuppath[-1])
+        nextdepth=thisdepth+1
+        backupbackuppath=backuppath[:-1]+str(nextdepth)
+        if nextdepth>depth:
+            #then need to delete this backupfile
+            #rather than renaming it.
+            LOG.info("backup depth has reach {} so deleting existing "
+                     "backup {}"
+                     .format(depth,
+                             os.path.basename(backuppath)))
+            os.remove(backuppath)
+            return False
+        self._backup_backup(backupbackuppath,depth=depth)
+        LOG.info("backing up backup from {} to {}"
+                 .format(os.path.basename(backuppath),
+                         os.path.basename(backupbackuppath)))
+        os.rename(backuppath,backupbackuppath)
+        return True
+
+    def rollback(self):
+        DIR,FN=os.path.split(self.filepath)
+        BN,EXT=os.path.splitext(FN)
+        backupfilepath=os.path.join(DIR,BN+".backup1")
+        if not os.path.exists(backupfilepath):
+            LOG.warning("No backup1 of {} so rollback aborted"
+                        .format(self.filepath))
+            return
+        else:
+            try:
+                self.fileob.close()
+            except Exception as e:
+                LOG.debug("failed to close DBase({}).fileob because {} {}"
+                      .format(self.filepath,e,get_traceback()))
+                return
+            LOG.warning("Deleting current dbase at {} and renaming "
+                        "{} to {}"
+                        .format(self.filepath,
+                                os.path.basename(backupfilepath),
+                                FN))
+            os.remove(self.filepath)
+            os.rename(backupfilepath,self.filepath)
+            self._rollback_backup(backupfilepath)
+            self._open_all()
+
+    def _rollback_backup(self,destinationbackupfilepath):
+        destinationdepth=int(destinationbackupfilepath[-1])
+        nextdepth=destinationdepth+1
+        nextbackup=destinationbackupfilepath[:-1]+str(nextdepth)
+        if os.path.exists(nextbackup):
+            LOG.warning("Renaming {} to {}"
+                        .format(os.path.basename(nextbackup),
+                                os.path.basename(destinationbackupfilepath)))
+            os.rename(nextbackup,destinationbackupfilepath)
+            self._rollback_backup(nextbackup)
+        else:
+            return False
 
     def __str__(self):
         return "DBase({}): <{}>".format(self.filepath,self.fileob)
@@ -5309,23 +5381,23 @@ class DBTable(object):
 #general maintenance functions
     def copytodb(self,dbnameroot="All",copysubrecords=True):
         assert dbnameroot!=self.dbasenameroot
-        print "SOURCE TABLE\n",self
+        #print "SOURCE TABLE\n",self
         allrecs=list(self)
         targetTable=self.__class__(dbnameroot)
-        print "TARGET TABLE\n",targetTable
+        #print "TARGET TABLE\n",targetTable
         targetTable.store_many_record_objects(allrecs)
         RC=self.recordclass()
         RC.dbasenameroot=self.dbasenameroot
         if copysubrecords:
             if hasattr(RC,"get_subrecordtable"):
                 subrecordtable=RC.get_subrecordtable()
-                print "SOURCE SUBTABLE\n",subrecordtable
+                #print "SOURCE SUBTABLE\n",subrecordtable
                 allsubrecs=[]
                 for rec in allrecs:
                     allsubrecs+=list(rec.yield_records())
                 if allsubrecs:
                     targetSubTable=subrecordtable.__class__(dbnameroot)
-                    print "TARGET SUBTABLE\n",targetSubTable
+                    #print "TARGET SUBTABLE\n",targetSubTable
                     targetSubTable.store_many_record_objects(allsubrecs)
 
 #
@@ -5430,8 +5502,10 @@ class DBTable(object):
         """
         Sometimes empty entries appear and are difficult to remove
         using the standard delete wrapper function. This takes care
-        of them all, though is SLOW.
+        of them all, though is a bit slow.
         """
+        if getattr(self,"has_been_repaired",False):
+            return False
         self.claim_table()
         limit=100
         delrows=[]
@@ -5469,6 +5543,8 @@ class DBTable(object):
                      .format(self.__class__.__name__,
                              self.dbasenameroot,
                              len(self.table)))
+        self.has_been_repaired=True
+        return True
 
 #display functions
     def __len__(self):
@@ -5680,6 +5756,11 @@ class DBTable(object):
             return filepath
         else:
             LOG.error("{}.input_from_txt() failed because path {} does not exist".format(self.__class__.__name__,filepath))
+
+    def diagnostics(self,**kwargs):
+        LOG.info("No diagnostics routine available for {}"
+                 .format(self.name()))
+        return
 
 class DBSharedTable(DBTable):
     _dbasenameroot=shareddbasenameroot
@@ -5906,6 +5987,46 @@ class Plates(DBSharedTable,InMemory):
             p.calculate_all()           
             tostore.append(p)
         self.store_many_record_objects(tostore,check=True)
+
+    def total(self):
+        return sum([p["capacity"].value for p in self])
+
+    def diagnostics(self,autorepair=False):
+        warnings=[]
+        def WARN(message):
+            warnings.append(message)
+            LOG.warning(message)
+        
+        W=Wells(self.dbasenameroot)
+        WL=len(W)
+        PLT=self.total()
+        
+        if PLT!=WL:
+            WARN("Subrecord total mismatch: "
+                 "{} records in {} but "
+                 "{} records expected based on "
+                 "{}.total()"
+                 .format(WL,
+                         W.name(),
+                         PLT,
+                         self.name()))
+            if WL>PLT:
+                if autorepair:
+                    WARN("autorepair=True so running repair() on {}"
+                         " to eliminate duds".format(W.name()))
+                    if not getattr(W,"has_been_repaired",False):
+                        W.diagnostics(autorepair=autorepair)
+                else:
+                    WARN("recommend running repair() on {} "
+                         "to eliminate duds".format(W.name()))
+
+        if not warnings:
+            LOG.info("No problems detected in {} ({} records)"
+                     .format(self.name(),PLT))
+        return warnings
+
+    def repair(self):
+        self.populate()
 #
 
 #WELLS ########################################################################
@@ -6350,7 +6471,54 @@ class Wells(DBSharedTable,InMemory):
         self.store_many_record_objects(tostore,check=False) # checking all is very slow
         return tostore
 
-
+    def diagnostics(self,autorepair=False):
+        warnings=[]
+        def WARN(message):
+            warnings.append(message)
+            LOG.warning(message)
+        
+        PL=Plates(self.dbasenameroot)
+        WL,PLT=len(self),PL.total()
+        if PLT!=WL:
+            WARN("Subrecord total mismatch: "
+                 "{} records in {} but "
+                 "{} records expected based on "
+                 "{}.total()"
+                 .format(WL,
+                         self.name(),
+                         PLT,
+                         PL.name()))
+            if WL>PLT:
+                dudcounter=0
+                for rec in self:
+                    if rec.is_dud():
+                        dudcounter+=1
+                if dudcounter>0:
+                    if autorepair:
+                        extra="autorepair=True so running repair() to eliminate duds"
+                    else:
+                        extra="recommend running repair() to eliminate duds"
+                    WARN("{} duds detected in {}({}): "+extra)
+                    if autorepair:
+                        self.repair()
+            elif PLT>WL:
+                if autorepair:
+                    extra=("autorepair=True so running diagnostics() on {}"
+                           .format(PL.name()))
+                else:
+                    extra=("recommend running diagnostics() on {}"
+                           .format(PL.name()))
+                WARN("Not all {} have subrecords in {}: "
+                     .format(PL.name(),
+                             self.name())+extra)
+                if autorepair:
+                    if not getattr(PL,"has_been_repaired",False):
+                        PL.diagnostics(autorepair=autorepair)
+        
+        if not warnings:
+            LOG.info("No problems detected in {} ({} records)"
+                     .format(self.name(),WL))
+        return warnings
 #
 
 #FILES ########################################################################
@@ -6669,7 +6837,6 @@ class Size(DBuInt32):
         return self.value
 
 class Genotyped(DBBool): pass
-
 class DateModified(DBDateTime):
     shortheader="dateM"
     colclip=7
@@ -7246,6 +7413,23 @@ class PlateLayout(DBRecord,GraphicGenerator):
     def build_up(cls,sourceplates):
         pass
 
+    def diagnostics(self):
+        warnings=[]
+        def WARN(message):
+            warnings.append(message)
+            LOG.warning(message)
+        #check key parameters have been stored
+        if not self.file_exists(): 
+            WARN("PlateLayout {} not found"
+                 .format(self.value))
+        C=self["capacity"].value
+        if hasattr(self,"records"): del self.records
+        recs=list(self.yield_records())
+        if C!=len(recs):
+            WARN("PlateLayout({}) capacity={} but has {} records"
+                 .format(self.value,C,len(recs)))
+        return warnings
+
 class PlateLayouts(DBSharedTable,InMemory):
     """
     
@@ -7302,6 +7486,41 @@ class PlateLayouts(DBSharedTable,InMemory):
     def total(self):
         return sum([p["capacity"].value for p in self])
 
+    def diagnostics(self,autorepair=False):
+        warnings=[]
+        def WARN(message):
+            warnings.append(message)
+            LOG.warning(message)
+        
+        PP=PlatePositions(self.dbasenameroot)
+        PPL=len(PP)
+        PLT=self.total()
+        if PLT!=PPL:
+            WARN("Subrecord total mismatch: "
+                 "{} records in {} but "
+                 "{} records expected based on "
+                 "{}.total()"
+                 .format(PPL,
+                         PP.name(),
+                         PLT,
+                         self.name()))
+            if PPL>PLT:
+                if autorepair:
+                    WARN("autorepair=True so running repair() on {}"
+                         " to eliminate duds".format(PP.name()))
+                    if not getattr(PP,"has_been_repaired",False):
+                        PP.diagnostics(autorepair=autorepair)
+                else:
+                    WARN("recommend running repair() on {} "
+                         "to eliminate duds".format(PP.name()))
+
+        for pl in self:
+            warnings+=pl.diagnostics()
+
+        if not warnings:
+            LOG.info("No problems detected in {} ({} records)"
+                     .format(self.name(),PLT))
+        return warnings
 #
 class IsControl(DBBool):
     treatments=["YPD","COM"]
@@ -8458,6 +8677,30 @@ class CombiFile(DBRecord,GraphicGenerator):
                                     locationpath=os.path.join(Locations().get_userpath(),
                                                               "~"+sfname+".lnk"))
 
+    def diagnostics(self):
+        warnings=[]
+        def WARN(message):
+            warnings.append(message)
+            LOG.warning(message)
+        #check key parameters have been stored
+        if not self["platelayout"].is_valid(): 
+            WARN("{} has no platelayout"
+                 .format(self.value))
+        if not self["ncurves"].is_valid(): 
+            WARN("{} has no ncurves"
+                 .format(self.value))
+        if warnings:
+            return warnings
+
+        ncurves=self["ncurves"].value
+        if hasattr(self,"records"): del self.records
+        recs=list(self.yield_records())
+        if ncurves!=len(recs):
+            WARN("CombiFile({}) ncurves={} but has {} records"
+                 .format(self.value,ncurves,len(recs)))
+        
+        return warnings
+
 class CombiFiles(DBTable,InMemory):
     _shared_state={}
     tablepath="/combifiles"
@@ -8589,6 +8832,44 @@ class CombiFiles(DBTable,InMemory):
                            plotfiles='shortcut',
                            dbaseobs='copy',
                            report=True)
+
+    def diagnostics(self,autorepair=False):
+        warnings=[]
+        def WARN(message):
+            warnings.append(message)
+            LOG.warning(message)
+        
+        CR=CombiReadings(self.dbasenameroot)
+        CRL=len(CR)
+        CFT=self.total()
+
+        if CRL!=CFT:
+            WARN("Subrecord total mismatch: "
+                 "{} records in {} but "
+                 "{} records expected based on "
+                 "{}.total()"
+                 .format(CRL,
+                         CR.name(),
+                         CFT,
+                         self.name()))
+
+            if CRL>CFT:
+                if autorepair:
+                    WARN("autorepair=True so running repair() on {}"
+                         " to eliminate duds".format(CR.name()))
+                    if not getattr(CR,"has_been_repaired",False):
+                        CR.diagnostics(autorepair=autorepair)
+                else:
+                    WARN("recommend running repair() on {} "
+                         "to eliminate duds".format(CR.name()))
+
+        for cf in self:
+            warnings+=cf.diagnostics()
+
+        if not warnings:
+            LOG.info("No problems detected in {} ({} records)"
+                     .format(self.name(),CFT))
+        return warnings
 
 #
 
@@ -9134,24 +9415,44 @@ class ControlledExperiments(DBTable,InMemory):
         return sum([ce["ncurves"].value for ce in self
                     if ce["ncurves"].is_valid()])
 
-    def diagnostics(self):
+    def diagnostics(self,autorepair=False):
         warnings=[]
         def WARN(message):
             warnings.append(message)
             LOG.warning(message)
         
-        controlledexperimentsnreadings=self.total()
-        R=ControlledReadings(self.dbasenameroot)
-        nreadings=len(R)
-        
-        if controlledexperimentsnreadings!=nreadings:
-            WARN("ControlledExperiments({}) should have {} controlled readings "
-                 "but ControlledReadings({}) has {}"
-                 .format(self.dbasenameroot,controlledexperimentsnreadings,
-                         self.dbasenameroot,nreadings))
+        CR=ControlledReadings(self.dbasenameroot)
+        CRL=len(CR)
+        CET=self.total()
+
+        if CRL!=CET:
+            WARN("Subrecord total mismatch: "
+                 "{} records in {} but "
+                 "{} records expected based on "
+                 "{}.total()"
+                 .format(CRL,
+                         CR.name(),
+                         CET,
+                         self.name()))
+
+            if CRL>CET:
+                if autorepair:
+                    WARN("autorepair=True so running repair() on {}"
+                         " to eliminate duds".format(CR.name()))
+                    if not getattr(CR,"has_been_repaired",False):
+                        CR.diagnostics(autorepair=autorepair)
+                else:
+                    WARN("recommend running repair() on {} "
+                         "to eliminate duds".format(CR.name()))
+
         for cex in self:
             warnings+=cex.diagnostics()
+
+        if not warnings:
+            LOG.info("No problems detected in {} ({} records)"
+                     .format(self.name(),CET))
         return warnings
+    
 #
 class File(DBRecord,GraphicGenerator):
     """
@@ -9469,6 +9770,8 @@ class File(DBRecord,GraphicGenerator):
         RF=RenamedFile(renamedfilename=self["filepath"].value,
                        renamedfolder=Locations().get_userpath())
         RF.calculate_all()
+        LOG.info("Creating new RenamedFile {} for {}"
+                 .format(RF,self.value))
         if store:
             if RF not in RenamedFiles():
                 RF.store()
@@ -9495,16 +9798,12 @@ class File(DBRecord,GraphicGenerator):
         if warnings:
             return warnings
 
-        
         ncurves=self["ncurves"].value
         if hasattr(self,"records"): del self.records
         recs=list(self.yield_records())
         if ncurves!=len(recs):
             WARN("File({}) ncurves={} but has {} records"
                  .format(self.value,ncurves,len(recs)))
-            for rec in recs:
-                warnings+=rec.diagnostics()
-        
         return warnings
 
 class Files(DBTable,InMemory):
@@ -9653,23 +9952,45 @@ class Files(DBTable,InMemory):
         for f in self:
             f.update_atoms(combifile=None)
 
-    def diagnostics(self):
+    def diagnostics(self,autorepair=False):
         warnings=[]
         def WARN(message):
             warnings.append(message)
             LOG.warning(message)
         
-        filesnreadings=self.total()
         R=Readings(self.dbasenameroot)
-        nreadings=len(R)
-        
-        if filesnreadings!=nreadings:
-            WARN("Files({}) should have {} readings "
-                 "but Readings({}) has {}"
-                 .format(self.dbasenameroot,filesnreadings,
-                         self.dbasenameroot,nreadings))
-            for file in self:
-                warnings+=file.diagnostics()
+        RL=len(R)
+        FT=self.total()
+
+        if RL!=FT:
+            WARN("Subrecord total mismatch: "
+                 "{} records in {} but "
+                 "{} records expected based on "
+                 "{}.total()"
+                 .format(RL,
+                         R.name(),
+                         FT,
+                         self.name()))
+
+            if RL>FT:
+                if autorepair:
+                    WARN("autorepair=True so running repair() on {}"
+                         " to eliminate duds".format(R.name()))
+                    if not getattr(R,"has_been_repaired",False):
+                        R.diagnostics(autorepair=autorepair)
+                else:
+                    WARN("recommend running repair() on {} "
+                         "to eliminate duds".format(R.name()))
+
+        for f in self:
+            warnings+=f.diagnostics()
+
+        if not warnings:
+            LOG.info("No problems detected in {} ({} records)"
+                     .format(self.name(),FT))
+        return warnings
+
+
 #
 class OriginalFilename(DBString):
     coltype=tbs.StringCol(255)
@@ -9734,7 +10055,7 @@ class DateCreated(DBDateTime):
             if filepath:
                 self.set_value(os.path.getmtime(filepath))
         return self.value
-
+#
 class RenamedFile(DBRecord):
     tableclassstring="RenamedFiles"
     slots=[OriginalFilename,OriginalFolder,
@@ -9778,6 +10099,19 @@ class RenamedFile(DBRecord):
         return os.path.join(self["renamedfolder"].value,
                             self["renamedfilename"].value)
 
+    def get_filestable(self):
+        folder=os.path.basename(self["renamedfolder"].value)
+        try:
+            return Files(dbasenameroot=folder)
+        except Exception as e:
+            LOG.error("Not able to find Files({}) for RenamedFile {}"
+                      .format(folder,
+                              self.get_renamedfilepath()))
+            return
+
+    def get_fileid(self):
+        return self["renamedfilename"].value.split(" ")[0]
+
     def get_file(self):
         NF=self["renamedfilename"]
         if not NF.is_valid():
@@ -9809,7 +10143,120 @@ class RenamedFile(DBRecord):
         if os.path.exists(RFP):
             LOG.info("{} already exists".format(RFP))
             return
+        LOG.info("Copying {} to {}"
+                 .format(OFP,RFP))
         return copy_to(OFP,RFP)
+
+    def diagnostics(self,autorepair=False):
+        warnings=[]
+        def WARN(message):
+            warnings.append(message)
+            LOG.warning(message)
+        #Does entry exist in the appropriate database Files table?
+        #Does renamed file still exists?
+
+        #check key parameters have been stored
+        OFN=self["originalfilename"]
+        if not OFN.is_valid():
+            WARN("original filename field is empty for {}"
+                 .format(str(self)))
+            if autorepair:
+                WARN("autorepair=True, so deleting {} as invalid record"
+                     .format(str(self)))
+                self.delete()
+                return warnings
+
+        OF=self["originalfolder"]
+        if not OF.is_valid():
+            WARN("original folder field is empty for {}"
+                 .format(str(self)))
+            if autorepair:
+                NOF=Locations().platereader_output
+                WARN("autorepair=True, so updating originalfolder to {}"
+                     .format(NOF))
+                self.update_atoms(originalfolder=NOF)
+
+        RFN=self["renamedfilename"].value
+        RFNbasename=os.path.basename(RFN)
+        if RFN!=RFNbasename:
+            WARN("renamedfilename {} is a path!".format(RFN))
+            if autorepair:
+                WARN("autorepair=True, so updating {} to {}"
+                     .format(RFN,RFNbasename))
+                self.update_atoms(renamedfilename=RFN)
+        
+        OFP=self.get_originalfilepath()
+        RFP=self.get_renamedfilepath()
+        if not OFP:
+            WARN("original filepath {} not valid"
+                 .format(OFP))
+            if autorepair:
+                WARN("autorepair=True, so deleting {}"
+                     .format(str(self)))
+                self.delete()
+            return warnings
+        elif not os.path.exists(OFP):
+            WARN("original filepath {} doesn't exist"
+                 .format(OFP))
+            if autorepair:
+                WARN("autorepair=True, so deleting {}"
+                     .format(str(self)))
+                self.delete()
+            return warnings
+        if not RFP:
+            WARN("renamed filepath {} not valid"
+                 .format(RFP))
+            if autorepair:
+                WARN("autorepair=True, so deleting {}"
+                     .format(str(self)))
+                self.delete()
+            return warnings
+        elif not os.path.exists(RFP):
+            WARN("renamed filepath {} doesn't exist"
+                 .format(RFP))
+            if autorepair:
+                if OFP:
+                    if os.path.exists(OFP):
+                        copy_to(OFP,RFP)
+        
+        F=self.get_filestable()
+        if not F:
+            WARN("Couldn't get_filestable for {}"
+                 .format(str(self)))
+            if autorepair:
+                WARN("autorepair=True, so deleting {}"
+                     .format(str(self)))
+                self.delete()
+            return warnings
+        FID=self.get_fileid()
+        LOG.debug("Checking {} in {}".format(FID,F.name()))
+        if not F.query_by_record_default(FID):
+            WARN("Couldn't find {} in {}"
+                 .format(FID,F.name()))
+            if autorepair:
+                failed=True
+                try:
+                    if os.path.exists(RFP):
+                        fo=File(filepath=RFP)
+                        fo.calculate_all()
+                        readingcount=fo.read()
+                        fo.store()
+                        LOG.info("autorepair=True, so recreated File({}) and added to {} "
+                                 "along with {} Readings"
+                                 .format(fo.value,
+                                         Locations().get_userpath(),
+                                         readingcount))
+                        failed=False
+                except Exception as e:
+                    failed=e
+                if failed:
+                    if failed is True:
+                        failed=""
+                    WARN("autorepair=True, but couldn't recreate "
+                         "File({}) because {} {} so deleting {}"
+                         .format(RFP,failed,get_traceback(),str(self)))
+                    self.delete()
+        return warnings
 
 class RenamedFiles(DBSharedTable):
     _shared_state={}
@@ -9818,16 +10265,20 @@ class RenamedFiles(DBSharedTable):
 
     def populate(self):
         all=[]
-        for subfolder in Locations().yield_userpaths():
-            F=Files(os.path.basename(subfolder))
-            for FOB in F:
-                RF=self.recordclass(renamedfilename=FOB["filepath"].value,
-                                    renamedfolder=subfolder)
-                RF.calculate_all()
-                if RF not in self:
-                    all.append(RF)
-                    #print RF
-        self.store_many_record_objects(all)
+        F=Files(os.path.basename(subfolder))
+        LOG.info("Could repopulate RenamedFiles from {} "
+                 "but this function is currently locked down."
+                 .format(F.name()))
+        return
+        #for subfolder in Locations().yield_userpaths():
+        #    for FOB in F:
+        #        RF=self.recordclass(renamedfilename=FOB["filepath"].value,
+        #                            renamedfolder=subfolder)
+        #        RF.calculate_all()
+        #        if RF not in self:
+        #            all.append(RF)
+        #            #print RF
+        #self.store_many_record_objects(all)
 
     def return_platereader_output_list(self):
         platereader_output=Locations().platereader_output
@@ -9853,6 +10304,42 @@ class RenamedFiles(DBSharedTable):
     def remake(self):
         for rf in self:
             rf.remake_file()
+
+    def diagnostics(self,autorepair=False):
+        warnings=[]
+        def WARN(message):
+            warnings.append(message)
+            LOG.warning(message)
+        #Check get_values_of_atom
+        OFcounter=self.get_values_of_atom("originalfilename")
+        for k,v in OFcounter.items():
+            if v!=1:
+                WARN("Found {} entries referring to same "
+                     "originalfilename {}"
+                     .format(v,k))
+        OFDcounter=self.get_values_of_atom("originalfolder")
+        PO=Locations().platereader_output
+        for k,v in OFDcounter.items():
+            if k=='':
+                WARN("Found {} entries without originalfolder"
+                     .format(v))
+            elif not os.path.exists(k):
+                WARN("Found {} entries referring to originalfolder {} "
+                     "which doesn't exist"
+                     .format(v,k))
+            elif k!=PO:
+                WARN("Found {} entries referring to originalfolder {} "
+                     "which isn't source_directory listed in "
+                     "config.txt"
+                     .format(v,k))
+        #
+        for rf in self:
+            warnings+=rf.diagnostics(autorepair=autorepair)
+
+        if not warnings:
+            LOG.info("No problems detected in {} ({} records)"
+                     .format(self.name(),len(self)))
+        return warnings
 
 #STRAINS ######################################################################
 class StrainID(DBString):
@@ -10145,6 +10632,53 @@ class PlatePositions(DBSharedTable,InMemory):
             if plobject["layoutstring"].value not in already_entered:
                 plobject.read(store=True)
 
+    def diagnostics(self,autorepair=False):
+        warnings=[]
+        def WARN(message):
+            warnings.append(message)
+            LOG.warning(message)
+        
+        PL=PlateLayouts(self.dbasenameroot)
+        PPL,PLT=len(self),PL.total()
+        if PLT!=PPL:
+            WARN("Subrecord total mismatch: "
+                 "{} records in {} but "
+                 "{} records expected based on "
+                 "{}.total()"
+                 .format(PPL,
+                         self.name(),
+                         PLT,
+                         PL.name()))
+            if PPL>PLT:
+                dudcounter=0
+                for rec in self:
+                    if rec.is_dud():
+                        dudcounter+=1
+                if dudcounter>0:
+                    if autorepair:
+                        extra="autorepair=True so running repair() to eliminate duds"
+                    else:
+                        extra="recommend running repair() to eliminate duds"
+                    WARN("{} duds detected in {}({}): "+extra)
+                    if autorepair:
+                        self.repair()
+            elif PLT>PPL:
+                if autorepair:
+                    extra=("autorepair=True so running diagnostics() on {}"
+                           .format(PL.name()))
+                else:
+                    extra=("recommend running diagnostics() on {}"
+                           .format(PL.name()))
+                WARN("Not all {} have subrecords in {}: "
+                     .format(PL.name(),
+                             self.name())+extra)
+                if autorepair:
+                    PL.diagnostics(autorepair=autorepair)
+        
+        if not warnings:
+            LOG.info("No problems detected in {} ({} records)"
+                     .format(self.name(),PPL))
+        return warnings
 #
 
 #READINGS #####################################################################
@@ -10402,11 +10936,52 @@ class Readings(DBTable,InMemory):
         Files().read_unread()
         return self
 
-    def diagnostics(self):
+    def diagnostics(self,autorepair=False):
         warnings=[]
         def WARN(message):
             warnings.append(message)
             LOG.warning(message)
+        
+        F=Files(self.dbasenameroot)
+        RL,FT=len(self),F.total()
+        if FT!=RL:
+            WARN("Subrecord total mismatch: "
+                 "{} records in {} but "
+                 "{} records expected based on "
+                 "{}.total()"
+                 .format(RL,
+                         self.name(),
+                         FT,
+                         F.name()))
+            if RL>FT:
+                dudcounter=0
+                for rec in self:
+                    if rec.is_dud():
+                        dudcounter+=1
+                if dudcounter>0:
+                    if autorepair:
+                        extra="autorepair=True so running repair() to eliminate duds"
+                    else:
+                        extra="recommend running repair() to eliminate duds"
+                    WARN("{} duds detected in {}({}): "+extra)
+                    if autorepair:
+                        self.repair()
+            elif FT>RL:
+                if autorepair:
+                    extra=("autorepair=True so running diagnostics() on {}"
+                           .format(F.name()))
+                else:
+                    extra=("recommend running diagnostics() on {}"
+                           .format(F.name()))
+                WARN("Not all {} have subrecords in {}: "
+                     .format(F.name(),
+                             self.name())+extra)
+                if autorepair:
+                    F.diagnostics(autorepair=autorepair)
+        
+        if not warnings:
+            LOG.info("No problems detected in {} ({} records)"
+                     .format(self.name(),RL))
         return warnings
 #
 class CombiReading(Reading,GraphicGenerator):
@@ -10572,6 +11147,53 @@ class CombiReadings(Readings):
         If kwarg averagereplicates is True, then this effect is applied last
         """
         return rQTLinputReader.create_from_object(self,*args,**kwargs)
+
+    def diagnostics(self,autorepair=False):
+        warnings=[]
+        def WARN(message):
+            warnings.append(message)
+            LOG.warning(message)
+        
+        CF=CombiFiles(self.dbasenameroot)
+        CRL,CFT=len(self),CF.total()
+        if CFT!=CRL:
+            WARN("Subrecord total mismatch: "
+                 "{} records in {} but "
+                 "{} records expected based on "
+                 "{}.total()"
+                 .format(CRL,
+                         self.name(),
+                         CFT,
+                         CF.name()))
+            if CRL>CFT:
+                dudcounter=0
+                for rec in self:
+                    if rec.is_dud():
+                        dudcounter+=1
+                if dudcounter>0:
+                    if autorepair:
+                        extra="autorepair=True so running repair() to eliminate duds"
+                    else:
+                        extra="recommend running repair() to eliminate duds"
+                    WARN("{} duds detected in {}({}): "+extra)
+                    if autorepair:
+                        self.repair()
+            elif CFT>CRL:
+                if autorepair:
+                    extra=("autorepair=True so running diagnostics() on {}"
+                           .format(CF.name()))
+                else:
+                    extra=("recommend running diagnostics() on {}"
+                           .format(CF.name()))
+                if autorepair:
+                    CF.diagnostics(autorepair=autorepair)
+                WARN("Not all {} have subrecords in {}: "
+                     .format(CF.name(),
+                             self.name())+extra)
+        if not warnings:
+            LOG.info("No problems detected in {} ({} records)"
+                     .format(self.name(),CRL))
+        return warnings
 #
 class ControlledReading(CombiReading):
     tableclassstring="ControlledReadings"
@@ -10664,6 +11286,54 @@ class ControlledReadings(DBTable,InMemory):
     _shared_state={}
     tablepath="/controlledreadings"
     recordclass=ControlledReading
+
+    def diagnostics(self,autorepair=False):
+        warnings=[]
+        def WARN(message):
+            warnings.append(message)
+            LOG.warning(message)
+        
+        CE=ControlledExperiments(self.dbasenameroot)
+        CRL,CET=len(self),CE.total()
+        if CET!=CRL:
+            WARN("Subrecord total mismatch: "
+                 "{} records in {} but "
+                 "{} records expected based on "
+                 "{}.total()"
+                 .format(CRL,
+                         self.name(),
+                         CET,
+                         CE.name()))
+            if CRL>CET:
+                dudcounter=0
+                for rec in self:
+                    if rec.is_dud():
+                        dudcounter+=1
+                if dudcounter>0:
+                    if autorepair:
+                        extra="autorepair=True so running repair() to eliminate duds"
+                    else:
+                        extra="recommend running repair() to eliminate duds"
+                    WARN("{} duds detected in {}({}): "+extra)
+                    if autorepair:
+                        self.repair()
+            elif CET>CRL:
+                if autorepair:
+                    extra=("autorepair=True so running diagnostics() on {}"
+                           .format(CE.name()))
+                else:
+                    extra=("recommend running diagnostics() on {}"
+                           .format(CE.name()))
+                WARN("Not all {} have subrecords in {}: "
+                     .format(CE.name(),
+                             self.name())+extra)
+                if autorepair:
+                    CE.diagnostics(autorepair=autorepair)
+        
+        if not warnings:
+            LOG.info("No problems detected in {} ({} records)"
+                     .format(self.name(),CRL))
+        return warnings
 #
 
 #FEATURES #####################################################################
@@ -11182,10 +11852,13 @@ def treatment_ratio_comparator(reading,controlreading,timefocus=16.0,
     return ra/ca
 
 def printall():
-    for t in [Locations(),Plates(),Wells(),PlateLayouts(),Strains(),
-              Files(),Readings(),CombiFiles(),CombiReadings()]:
-        print t
-        print
+    Locations().display_all()
+
+def backupall(depth=3):
+    Locations().backup_all(depth=depth)
+
+def rollbackall():
+    Locations().rollback_all()
 
 def repairall():
     """
@@ -11202,21 +11875,22 @@ def repairall():
             LOG.error("Couldn't repair {} because {} {}"
                       .format(tabl.name(),e,get_traceback()))
 
-def diagnosticsall():
+def diagnosticsall(autorepair=False):
     """
     finds all databases and performs repair() on all tables in each database
     """
     LOCS=Locations()
+    if autorepair:
+        LOCS.backup_all()
     #
     for tabl in LOCS.yield_all_dbtables():
         try:
             LOG.info("Running diagnostics on {}"
-                     .formay(tabl.name()))
-            tabl.diagnostics()
+                     .format(tabl.name()))
+            tabl.diagnostics(autorepair=autorepair)
         except Exception as e:
-            LOG.debug("Couldn't repair {} because {} {}"
+            LOG.info("Couldn't repair {} because {} {}"
                       .format(tabl.name(),e,get_traceback()))
-
 
 def average_replicate_timepoints(rowdata):
     """
@@ -11562,13 +12236,12 @@ def sample_curveanalyses(n=30):
 
 #MAIN #########################################################################
 if __name__=='__main__':
-    setup_logging("INFO")#CRITICAL")
+    setup_logging("INFO")#WARNING")#ERROR")#CRITICAL")
     sys.excepthook=log_uncaught_exceptions
 
-
-    repairall()
+    backupall()
+    diagnosticsall(autorepair=True)
     
-    #Files("Controls").diagnostics()
     #Data from http://www.yeastgenome.org/search?q=paraquat&is_quick=true
 #    paraquatresistancedecreased=['CCS1','FRS2','IRA2','NAR1','POS5','PUT1','RNR4','SOD1','SOD2','UTH1']
 #    paraquatresistanceincreased=['PUT1','TPO1']
