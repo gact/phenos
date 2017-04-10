@@ -1170,9 +1170,7 @@ def store_fileobject(MAINDICT):
             LOG.error("Couldn't create fileobject from MAINDICT {} "
                       "because {} {}"
                       .format(MAINDICT,e,get_traceback()))
-    fo=MAINDICT.get("fileobject",None)
-    if not fo:
-        return None
+    fo=MAINDICT["fileobject"]
     fo.calculate_all()
     if not fo["platelayout"].file_exists():
         LOG.error("Layout file {} not found"
