@@ -13,7 +13,7 @@ import tkFileDialog
 
 filename = os.path.basename(__file__)
 authors = ("David B. H. Barton")
-version = "1.0"
+version = "1.1"
 #
 LOCS=Locations()
 windowposition='{}x{}+{}+{}'.format(*LOCS.windowposition)
@@ -136,7 +136,8 @@ def choose_file_to_rename():
     root=tk.Tk()
     LB1=MultiColumnListbox(root,
                            title="PHENOS",
-                           instruct="Select file to rename.",
+                           instruct=("Select file to rename.\n\n"
+                                     "Hit <Delete> to remove any file(s) already created."),
                            headers=["Filename",
                                     "Already renamed as",
                                     "Date/time finished"],
@@ -720,11 +721,14 @@ def choose_layout(MAINDICT):
                                      "and select it.\nIf it doesn't "
                                      "exist, you need to create it "
                                      "(modify one of the Basic layouts "
-                                     "and save it under a new name)."),
+                                     "and save it under a new name).\n\n"
+                                     "Hit <Delete> to remove any layout(s) "
+                                     "already created."),
                            headers=["Layouts ({})".format(arraysize),
                                     "Number of files (including in All) with layout"],
                            lists=LST,
-                           default=DEF)
+                           default=DEF,
+                           delete_fn=delete_layout)
     root.focus_force()
     root.geometry(windowposition)
     root.mainloop()
@@ -1177,6 +1181,7 @@ def store_fileobject(MAINDICT):
                   .format(fo["platelayout"].value))
         return None
     try:
+        LOG.info("ABOUT TO STORE {}".format(str(fo)))
         fo.store()
         readingcount=fo.read()
         
@@ -1191,7 +1196,6 @@ def store_fileobject(MAINDICT):
                   .format(MAINDICT["targetfilename"],
                           e,get_traceback()))
         return MAINDICT
-
     if fo:
         if fo.is_empty():
             try:
@@ -1694,6 +1698,40 @@ def delete_files(files,checkboxes=True):
             delete_files(fa,checkboxes=False)
             fc=Files("Controls").query_by_kwargs(fileid=fval)
             delete_files(fc,checkboxes=False)
+    return True
+
+def delete_layout(layouts,checkboxes=True):
+    if type(layouts)!=list:
+        LOG.critical("Should be passed list")
+        sys.exit()
+    if not layouts or layouts==[None]:
+        return None
+    for l in layouts:
+        if type(l) in [str,unicode]:
+            l=PlateLayouts()[l]
+        LOG.info("Deleting Layout {} from {}".format(str(l),
+                                                     l.dbasenameroot))
+
+        if not checkboxes:
+            GOAHEAD="Yes"
+        else:
+            root=tk.Tk()
+            instruction=("ARE YOU SURE YOU WANT TO DELETE\n\n"
+                         "PlateLayout ({})\t\n\n"
+                         "and\t{} PlatePositions in {}?"
+                         .format(l.value,
+                                 l["capacity"].value,
+                                 LOCS.currentuserfolder))
+            OB4=OptionBox(root,
+                          title="PHENOS",
+                          instruct=instruction)
+            root.focus_force()
+            root.geometry(windowposition)
+            root.mainloop()
+            GOAHEAD=OB4.value
+        if GOAHEAD=="Yes":
+            l.delete()
+            #This should also automatically delete any PlatePositions derived from it
     return True
 
 def delete_combifiles(combifiles,checkboxes=True,delete_files_too=False):
