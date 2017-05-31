@@ -449,18 +449,18 @@ class Locations(object):
     def userfolder_to_userpath(self,userfolder):
         return os.path.join(self["datafiles"],userfolder)
 
-    def set_userfolder(self,userfolder,create=False):
+    def set_userfolder(self,userfolder,create=True):
         if userfolder==Locations.currentuserfolder:
             return True
         if userfolder not in self.get_userfolders():
+            error="Can't find userfolder {} so ".format(userfolder)
             if create:
-                self.add_new_userfolder(userfolder,setfolder=False)
+                LOG.error(error+"creating it")
+                self.add_new_userfolder(userfolder,setfolder=True)
             else:
-                previoususerfolder=userfolder
-                userfolder="Test"
-                LOG.error("Can't find userfolder {} "
-                          "so setting to Software Test"
-                          .format(previoususerfolder,userfolder))
+                error=error+"terminating program"
+                LOG.critical(error)
+                sys.exit()
         #
         Locations.currentuserfolder=userfolder
         Locations.configparser.set('Locations', 'user_folder', userfolder)
@@ -7625,7 +7625,7 @@ class LagCalc(PhenotypeCalculator):
 
 class MaxSlopeCalc(PhenotypeCalculator):
     allowed=["CombiReading","ControlledReading"]
-    internalheaderformat="MaxSlope(change OD/hr)"
+    internalheaderformat="MaxSlope(change OD per hr)"
     externalheadercode="MxSl"
     def get_header_list(self):
         if not hasattr(self,"headers"):
@@ -7795,13 +7795,13 @@ class CombiFileID(DBString):
             return None
         filelets=''.join(sorted(CD["fileletter"]))
 
-        expids=CD["experimentid"]
+        expids=CD.get("experimentid",[])
         if len(expids)!=1:
             LOG.error("Different experimentids: {}".format(expids))
             return None
         expid=expids[0]
 
-        trtmnts=CD["treatment"]
+        trtmnts=CD.get("treatment",[])
         if not len(trtmnts)==1:
             LOG.error("Multiple treatments ({}) for {}{}"
                       .format(trtmnts, expid, filelets))
@@ -11381,7 +11381,7 @@ class GFFSourceFile(DBString):
     colclip=10
 class GFFSourceDate(DBDateTime):
     shortheader="time"
-
+#
 class Feature(DBRecord):
     """
     Feature information drawn from a GFF file
@@ -11426,6 +11426,33 @@ class Feature(DBRecord):
         additive=get_chrcumulative()[c]
         ST,EN=self["featurestart"].value,self["featureend"].value
         return float(ST+additive),float(EN+additive)
+
+    def process_markers_into_features(self,markerdict):
+        if hasattr(self.__class__,"markerdict"):
+            if markerdict==self.__class__.markerdict:
+                if hasattr(self.__class__,"markerfeatures"):
+                    return self.__class__.markerfeatures
+                return None
+        self.__class__.markerdict=markerdict
+        mns=markerdict.get("markernames",[])
+        format="c{.d}:{.d}"
+        #TEMP...
+        return markerdict
+        
+
+    def get_Gaplotypes_for_strain(self,strainname):
+        if not hasattr(self.__class__,"straintable"):
+            self.__class__.straintable=Strains()
+        STRNS=self.__class__.straintable
+        GD=STRNS.get_genotype_dict()
+        #print GD
+        S=STRNS[strainname]
+        A=S.alleles()
+        F=self.process_markers_into_features(S.markers())
+        print A
+        print F
+        
+        
 
 class Features(DBSharedTable,InMemory):
     tablepath="/features"
@@ -12239,8 +12266,13 @@ if __name__=='__main__':
     setup_logging("INFO")#WARNING")#ERROR")#CRITICAL")
     sys.excepthook=log_uncaught_exceptions
 
-    backupall()
-    diagnosticsall(autorepair=True)
+    #backupall()
+    #diagnosticsall(autorepair=True)
+
+    #f=Features()[200]
+    #print f
+    #print f.get_Gaplotypes_for_strain("AW12fc215")
+
     
     #Data from http://www.yeastgenome.org/search?q=paraquat&is_quick=true
 #    paraquatresistancedecreased=['CCS1','FRS2','IRA2','NAR1','POS5','PUT1','RNR4','SOD1','SOD2','UTH1']
