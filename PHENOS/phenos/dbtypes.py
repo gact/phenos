@@ -10296,8 +10296,13 @@ class RenamedFiles(DBSharedTable):
                         output[flbn]=''
         sortlist=[]
         for Ofil,Rfil in output.items():
-            CT=os.path.getctime(os.path.join(platereader_output,Ofil))
-            sortlist.append((Ofil,Rfil,CT))
+            Opath=os.path.join(platereader_output,Ofil)
+            if not os.path.exists(Opath):
+                LOG.error("Original file {} does not now exist in {}"
+                          .format(Ofil,platereader_output))
+            else:
+                CT=os.path.getctime(os.path.join(platereader_output,Ofil))
+                sortlist.append((Ofil,Rfil,CT))
         sortlist.sort(key=lambda t: t[2],reverse=True)
         return sortlist
 
