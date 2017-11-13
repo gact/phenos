@@ -51,7 +51,7 @@ except:
 
 filename=os.path.basename(__file__)
 authors=("David B. H. Barton")
-version="2.9"
+version="2.10"
 
 usecontrolsdatabase=True
 shareddbasenameroot="_phenos_shared_database"
@@ -1594,18 +1594,45 @@ class DATRecoveryFile(_CsvReader):
                       .format(self.filepath,self.__class__.__name__))
         else:
             #read in ranges
+            self._process_date_and_time()
             x,y=self._get_dimensions()
             dataranges={}
             for cellrangename,descriptor in self.ranges:
                 dataranges[descriptor]=self.read_cell_range(cellrangename)
+
             timepattern=re.compile("(\d+) h (\d*)( min)?")
             timepoints=[]
             for timestring in dataranges["timepoints"]:
-                hr,mn,x=re.match(timepattern,timestring).groups()
-                timevalue=((int(hr)*60)+int(mn or 0))/60.0
-                timepoints.append(timevalue)
+                matches=re.match(timepattern,timestring)
+                if matches is None:
+                    print ">",timestring
+                else:
+                    hr,mn,x=matches.groups()
+                    if not hr: hr=0
+                    if not mn: mn=0
+                    hr=int(hr)
+                    mn=int(mn)
+                    timevalue=((hr*60)+(mn))/60.0
+                    timepoints.append(timevalue)
 
-            self.shareddata["n_curves"]=len(dataranges["data"])
+            MS=dataranges["data"]
+            measurements=[]
+            for i,row in enumerate(MS):
+                measurementrow=[]
+                if row[-1]=='':
+                    row=row[:-1]
+                for item in row:
+                    try:
+                        measurementrow.append(float(item))
+                    except:
+                        measurementrow.append(None)
+                if None in measurementrow:
+                    LOG.error("row {} in {} has None values"
+                              .format(i,self.filepath))
+                else:
+                    measurements.append(measurementrow)
+
+            self.shareddata["n_curves"]=len(measurements)
             self.shareddata["timepoints"]=timepoints
             self.shareddata["n_measures"]=len(timepoints)
 
@@ -1613,8 +1640,8 @@ class DATRecoveryFile(_CsvReader):
             for PL,PN,SN,MS in zip(dataranges["plate row letters"],
                                    dataranges["plate column numbers"],
                                    dataranges["plate sample labels"],
-                                   dataranges["data"]):
-                self.rowdata.append({"measurements":[float(f) for f in MS],
+                                   measurements):
+                self.rowdata.append({"measurements":MS,
                                      "wellname":PL+PN,
                                      "samplename":SN})
             return self.shareddata,self.rowdata
@@ -5172,7 +5199,11 @@ class DBTable(object):
         >>> print DBTable().query_by_condition_string("(dbatom==3)")[0]
         DBRecord(3, 4, 5.0)
         """
-        return list(self._query_generator(condition_string))
+        try:
+            return list(self._query_generator(condition_string))
+        except Exception as e:
+            LOG.error("failed because {}: {}".format(e,get_traceback()))
+            return []
 
     def query_by_record_default(self,value_to_check_in_record_default):
         """
@@ -12271,14 +12302,9 @@ if __name__=='__main__':
     setup_logging("INFO")#WARNING")#ERROR")#CRITICAL")
     sys.excepthook=log_uncaught_exceptions
 
-    #backupall()
-    #diagnosticsall(autorepair=True)
+    backupall()
+    diagnosticsall(autorepair=True)
 
-    #f=Features()[200]
-    #print f
-    #print f.get_Gaplotypes_for_strain("AW12fc215")
-
-    
     #Data from http://www.yeastgenome.org/search?q=paraquat&is_quick=true
 #    paraquatresistancedecreased=['CCS1','FRS2','IRA2','NAR1','POS5','PUT1','RNR4','SOD1','SOD2','UTH1']
 #    paraquatresistanceincreased=['PUT1','TPO1']
