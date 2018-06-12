@@ -327,6 +327,7 @@ class Locations(object):
         Locations.rootdirectory=CD["target_directory"]
         Locations.currentuserfolder=CD["user_folder"]
         Locations.graphicstype=CD["graphicstype"]
+        Locations.plotignore=CD["plotignore"]
         Locations.windowposition=CD["windowposition"]
         return Locations.configparser
 
@@ -1568,6 +1569,9 @@ class DATRecoveryFile(_CsvReader):
     'Export Table to ASCII' button on the tool bar.
     Once renamed appropriately, this file can be read using this
     file reader.
+    NB The emptyplate program, having only one timepoint, omits
+    the fourth row containing timepoints. Therefore a second version
+    of this has been added
     """
     include_in_format_search=True
     checks=[("A1","User: (.+)","platereaderusername"),
@@ -1602,18 +1606,105 @@ class DATRecoveryFile(_CsvReader):
 
             timepattern=re.compile("(\d+) h (\d*)( min)?")
             timepoints=[]
-            for timestring in dataranges["timepoints"]:
-                matches=re.match(timepattern,timestring)
-                if matches is None:
-                    print ">",timestring
+            if "timepoints" in dataranges:
+                for timestring in dataranges["timepoints"]:
+                    #if not timestring:
+                    #    continue
+                    matches=re.match(timepattern,timestring)
+                    if matches is None:
+                        print ">",timestring
+                    else:
+                        hr,mn,x=matches.groups()
+                        if not hr: hr=0
+                        if not mn: mn=0
+                        hr=int(hr)
+                        mn=int(mn)
+                        timevalue=((hr*60)+(mn))/60.0
+                        timepoints.append(timevalue)
                 else:
-                    hr,mn,x=matches.groups()
-                    if not hr: hr=0
-                    if not mn: mn=0
-                    hr=int(hr)
-                    mn=int(mn)
-                    timevalue=((hr*60)+(mn))/60.0
-                    timepoints.append(timevalue)
+                    timepoints=[0]
+
+            MS=dataranges["data"]
+            measurements=[]
+            for i,row in enumerate(MS):
+                measurementrow=[]
+                if row[-1]=='':
+                    row=row[:-1]
+                for item in row:
+                    try:
+                        measurementrow.append(float(item))
+                    except:
+                        measurementrow.append(None)
+                if None in measurementrow:
+                    LOG.error("row {} in {} has None values"
+                              .format(i,self.filepath))
+                else:
+                    measurements.append(measurementrow)
+
+            self.shareddata["n_curves"]=len(measurements)
+            self.shareddata["timepoints"]=timepoints
+            self.shareddata["n_measures"]=len(timepoints)
+
+            self.rowdata=[]
+            for PL,PN,SN,MS in zip(dataranges["plate row letters"],
+                                   dataranges["plate column numbers"],
+                                   dataranges["plate sample labels"],
+                                   measurements):
+                self.rowdata.append({"measurements":MS,
+                                     "wellname":PL+PN,
+                                     "samplename":SN})
+            return self.shareddata,self.rowdata
+
+class DATRecoveryFileSingleTimepoint(_CsvReader):
+    include_in_format_search=True
+    checks=[("A1","User: (.+)","platereaderusername"),
+            ("A2","Test name: (.*)","platereaderprogram"),
+            ("A3","Absorbance",None),
+            ("A5","Well Row",None),
+            ("A6","A",None),
+            ("B1","Path: (.*)","filepath"),
+            ("B2","Date: (\d\d/\d\d/\d\d\d\d)","datestarted"),
+            ("B5","Well Col",None),
+            ("B6","1",None),
+            ("C1","Test run no.: (\d*)","platereadertestID"),
+            ("C2","Time: (\d\d:\d\d:\d\d)","timestarted")]
+    ranges=[("A6:A1048576","plate row letters"),
+            ("B6:B1048576","plate column numbers"),
+            ("C6:C1048576","plate sample labels"),
+            ("D6:XFD1048576","data")]
+    filenamereader=ReadingFileNameReader
+
+    def parse(self,sheetname=None):
+        if not self.is_correct_format(report=False):
+            LOG.error("{} is not in the correct format for {}"
+                      .format(self.filepath,self.__class__.__name__))
+        else:
+            #read in ranges
+            self._process_date_and_time()
+            x,y=self._get_dimensions()
+            dataranges={}
+            for cellrangename,descriptor in self.ranges:
+                dataranges[descriptor]=self.read_cell_range(cellrangename)
+
+            timepattern=re.compile("(\d+) h (\d*)( min)?")
+            timepoints=[]
+            if "timepoints" in dataranges:
+                for timestring in dataranges["timepoints"]:
+                    #if not timestring:
+                    #    continue
+                    matches=re.match(timepattern,timestring)
+                    if matches is None:
+                        print ">",timestring
+                    else:
+                        hr,mn,x=matches.groups()
+                        if not hr: hr=0
+                        if not mn: mn=0
+                        hr=int(hr)
+                        mn=int(mn)
+                        timevalue=((hr*60)+(mn))/60.0
+                        timepoints.append(timevalue)
+                else:
+                    timepoints=[0]
 
             MS=dataranges["data"]
             measurements=[]
@@ -11042,6 +11133,17 @@ class CombiReading(Reading,GraphicGenerator):
         em=self["emptymeasure"].value or 0
         return [y-em for y in self.rawmeasuredvalues()]
 
+    def ignoreinplot(self):
+        #If True then line wont be plotted in CurvePlots
+        if Locations().plotignore is True:
+            #Then all ignores will be plotted, so
+            return False
+        if self.should_ignore():
+            LOG.warning("Ignoring combireading {} ({}) as instructed"
+                        .format(self["strain"].value,self["wellname"].value))
+            return True
+        return False
+
     def minimumwithoutagar(self):
         return self["minimum"].value-self["emptymeasure"].value
 
@@ -12302,8 +12404,10 @@ if __name__=='__main__':
     setup_logging("INFO")#WARNING")#ERROR")#CRITICAL")
     sys.excepthook=log_uncaught_exceptions
 
-    backupall()
-    diagnosticsall(autorepair=True)
+    #backupall()
+    #diagnosticsall(autorepair=True)
+
+    
 
     #Data from http://www.yeastgenome.org/search?q=paraquat&is_quick=true
 #    paraquatresistancedecreased=['CCS1','FRS2','IRA2','NAR1','POS5','PUT1','RNR4','SOD1','SOD2','UTH1']
