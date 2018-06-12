@@ -1373,6 +1373,7 @@ class CurvePlot(PlateView):
     def __init__(self,
                  timevalues=[], #xvalues
                  measurements=[], #yvalues
+                 ignore=None,
                  colorvalues='black',
                  colorvaluebounds=None,
                  linewidth=1,
@@ -1419,6 +1420,9 @@ class CurvePlot(PlateView):
                  **kwargs):
         self.__dict__.update(locals().copy())
 
+        if self.ignore is None:
+            #By default, don't ignore
+            self.ignore=[False for m in measurements]
 
         LOG.debug(self.__dict__.keys())
         LOG.debug("unexpected kwargs {}".format(kwargs.keys()))
@@ -1481,6 +1485,7 @@ class CurvePlot(PlateView):
         self.axes.set_ylabel(self.yaxislabel)
         self.axes.set_xscale(self.xaxisscale)
         self.axes.set_yscale(self.yaxisscale)
+        self.axes.patch.set_facecolor(self.backgroundcolor)
 
         self.nunits=len(self.measurements)
         if len(self.timevalues)!=self.nunits:
@@ -1512,10 +1517,13 @@ class CurvePlot(PlateView):
             LW=self.linewidth
         else:
             LW=[self.linewidth for x in self.measurements]
-        for xs,ys,c,lw in izip(self.timevalues,
-                               self.measurements,
-                               self.colorvalues,
-                               LW):
+        for xs,ys,dontplot,c,lw in izip(self.timevalues,
+                                  self.measurements,
+                                  self.ignore,
+                                  self.colorvalues,
+                                  LW):
+            if dontplot:
+                continue
             if len(ys)==1:
                 pyob=pyplt.Line2D(xdata=xs,ydata=ys,
                                   marker="o",
@@ -2249,6 +2257,8 @@ class CurvesWithoutAgar_PrintedMass(ViewWrapper):
             kwargs2=dict(timevalues=combifileob.timevalues(),
                          measurements=[cr["rawmeasuredvaluesminusagar"]
                                        for cr in recs],
+                         ignore=[cr["ignoreinplot"]
+                                 for cr in recs],
                          yaxislabel='OD600 minus agar',
                          colorvalues=[cr["platedmass"].value
                                       for cr in recs],
@@ -2278,6 +2288,8 @@ class CurvesWithoutAgar_Groups(ViewWrapper):
             kwargs2=dict(timevalues=combifileob.timevalues(),
                          measurements=[cr["rawmeasuredvaluesminusagar"]
                                        for cr in recs],
+                         ignore=[cr["ignoreinplot"]
+                                 for cr in recs],
                          yaxislabel='OD600 minus agar',
                          colorvalues=[cr["readinggroup"].value
                                       for cr in recs],
@@ -2304,6 +2316,8 @@ class CurvesWithoutAgar_Slopes(ViewWrapper):
             kwargs2=dict(timevalues=combifileob.timevalues(),
                          measurements=[cr["rawmeasuredvaluesminusagar"]
                                        for cr in recs],
+                         ignore=[cr["ignoreinplot"]
+                                 for cr in recs],
                          yaxislabel='OD600 minus agar',
                          colorvalues=[cr.get_maxslope()
                                       for cr in recs],
@@ -2332,6 +2346,8 @@ class CurvesWithoutAgar_Lags(ViewWrapper):
             kwargs2=dict(timevalues=combifileob.timevalues(),
                          measurements=[cr["rawmeasuredvaluesminusagar"]
                                        for cr in recs],
+                         ignore=[cr["ignoreinplot"]
+                                 for cr in recs],
                          yaxislabel='OD600 minus agar',
                          colorvalues=[cr.get_lag()
                                       for cr in recs],
@@ -2359,6 +2375,8 @@ class CurvesNormalized_PrintedMass(ViewWrapper):
             kwargs2=dict(timevalues=combifileob.timevalues(),
                          measurements=[cr["measuredvalues"]
                                        for cr in recs],
+                         ignore=[cr["ignoreinplot"]
+                                 for cr in recs],
                          yaxislabel='change in OD600 from minimum',
                          colorvalues=[cr["platedmass"].value
                                       for cr in recs],
