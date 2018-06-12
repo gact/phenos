@@ -448,6 +448,16 @@ def choose_user_initials(MAINDICT):
                              "Choose again.".format(USERINITIALS,ALLINI[USERINITIALS]))
                 LOG.error(instruction)
                 USERINITIALS=None
+            else:
+                chars=set(USERINITIALS.lower())
+                ok=set("abcdefghijklmnopqrstuvwxyz")
+                notok=chars-ok
+                if notok:
+                    notokstring=", ".join(list(notok))
+                    instruction=("The following characters are not valid letters: "
+                                 "{} Choose again.".format(notokstring))
+                    LOG.error(instruction)
+                    USERINITIALS=None
 
     if USERINITIALS:
         MAINDICT["userinitials"]=USERINITIALS
@@ -749,6 +759,12 @@ def choose_layout(MAINDICT):
                 return
             else:
                 LAYOUT=os.path.splitext(os.path.basename(filename))[0]
+                disallowed="(){}[].'\"/\\"
+                intersect=set(LAYOUT).intersection(set(disallowed))
+                if intersect:
+                    INS="Layout file name contains the following characters that are not allowed: {}. Please rename and try again.".format(str(intersect))
+                    LOG.error(INS)
+                    return
             query=PlateLayout(filepath=os.path.basename(filename),
                               layoutstring=LAYOUT)
             if query not in PLO:
@@ -1177,9 +1193,48 @@ def store_fileobject(MAINDICT):
     fo=MAINDICT["fileobject"]
     fo.calculate_all()
     if not fo["platelayout"].file_exists():
-        LOG.error("Layout file {} not found"
+        LOG.error("Layout file {} not found. Please locate."
                   .format(fo["platelayout"].value))
-        return None
+        LOC=LOCS["layouts"]
+        INS=("Can't find {} in layouts folder. Please "
+             "copy it into this folder and select it now. "
+             "Or <escape> to return to main menu."
+             .format(fo["platelayout"].value))
+
+        root=tk.Tk()
+        root.geometry(windowposition)
+        root.withdraw()
+        filename=tkFileDialog.askopenfilename(initialdir=LOC,
+                                              title=INS)
+        root.destroy()
+        if filename:
+            LAYOUT=os.path.splitext(os.path.basename(filename))[0]
+            query=PlateLayout(filepath=os.path.basename(filename),
+                              layoutstring=LAYOUT)
+            if query not in PLO:
+                try:
+                    shareddata=MAINDICT["shareddata"]
+                    arraysize=shareddata["n_curves"]
+                    query.read(store=True)
+                    CAP=query["capacity"].value
+                    if CAP!=arraysize:
+                        INS=("Platelayout {} has size {}, "
+                             "whereas {} has size {}. Choose again."
+                             .format(filename,
+                                     CAP,
+                                     originalfilename,
+                                     arraysize))
+                        LOG.error(INS)
+                        LAYOUT=None
+                except Exception as e:
+                    INS=("Couldn't read platelayout {} because {} {}. "
+                         "Choose again."
+                         .format(filename,e,get_traceback()))
+                    LOG.error(INS)
+                    LAYOUT=filename=None
+        if not filename:
+            return None
+
     try:
         LOG.info("ABOUT TO STORE {}".format(str(fo)))
         fo.store()
@@ -1316,7 +1371,6 @@ def main_rename():
         filename=MAINDICT["renamedfilename"]
         sourcefilepath=os.path.join(platereader_output,filename)
         targetfilepath=os.path.join(LOCS.get_userpath(),filename)
-        copy_to(sourcefilepath,targetfilepath)
 
         if not choose_user_folder(MAINDICT):
             #OPTION: CONTINUE WITHOUT DATA? (Just generates txt and basic curves)
@@ -1326,6 +1380,7 @@ def main_rename():
         if stored is None:
             print "No Layout file"
             return
+        copy_to(sourcefilepath,targetfilepath)
         MAINDICT=stored
         MAINDICT=store_renamed_file(MAINDICT)
     
@@ -2196,6 +2251,5 @@ if __name__=="__main__":
     Strains().update()
     LOCS.backup_all()
     main()
-
 
 
