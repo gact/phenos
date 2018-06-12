@@ -499,7 +499,10 @@ def get_config_dict():
     def safeget(section,defaultheader,defaultcontent):
         if not CFpars.has_section(section):
             return None
-        return CFpars.get(section,defaultheader,defaultcontent)
+        try:
+            return CFpars.get(section,defaultheader,defaultcontent)
+        except ConfigParser.NoOptionError:
+            return defaultcontent
 
     def getall(section,default):
         if not CFpars.has_section(section):
@@ -532,6 +535,9 @@ def get_config_dict():
             "graphicstype":safeget("Graphics",
                                    "type",
                                    "png"),
+            "plotignore":safeget("Graphics",
+                                 "plotignore",
+                                 "True"),
             "windowposition":splitnumbers(safeget("GUI",
                                                   "position",
                                                   "800,600,0,0")),
@@ -769,8 +775,6 @@ def check_path(filepath,
     if not os.path.exists(check["directory"]):
         if create_directory:
             prepare_path(check["directory"])
-        else:
-            return False
     return check["filepath"]
 
 def get_class_by_name(name):
@@ -909,6 +913,8 @@ if __name__=='__main__':
     setup_logging("INFO")#CRITICAL")
     sys.excepthook=log_uncaught_exceptions
 
+
+    get_config_dict()
     #setup_config_txt(destinationpath="C:\Users\localadmin1\AppData\Roaming\PHENOS\config D.txt")
 
     #import doctest
