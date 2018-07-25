@@ -10387,6 +10387,7 @@ class RenamedFiles(DBSharedTable):
 
     def populate(self):
         all=[]
+        subfolder=Locations().yield_userpaths().next()
         F=Files(os.path.basename(subfolder))
         LOG.info("Could repopulate RenamedFiles from {} "
                  "but this function is currently locked down."
